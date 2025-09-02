@@ -1,0 +1,9 @@
+dist
+build
+node_modules
+public
+vite.config.*
+*.config.js
+*.config.cjs
+*.config.ts
+*.d.ts
