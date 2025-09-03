@@ -26,7 +26,7 @@ export default function App() {
           <path d="M13.3,98.8l130.9,130.9,11.6-11.6L40.1,102.3c6.2-3.2,12.5-6.1,18.9-8.7,27.1-11,55.7-16.6,85.1-16.6,29.4,0,58,5.6,85.1,16.6,6.5,2.6,12.8,5.6,19,8.8l-76,76-59-59c10.2-1.7,20.5-2.6,30.9-2.6s20.7.9,30.9,2.6l-14.5,14.5,11.6,11.6,35.1-35.1c-41-13.4-85.3-13.4-126.3,0l91.3,91.3,102.8-102.8c-79.5-51-182.2-51-261.7,0Z" />
         </svg>
         <div className="title">
-          <h1>Veraro Bracelet Studio</h1>
+          <h1>Veraro Studio</h1>
         </div>
         <div className="spacer" />
         <button
@@ -49,8 +49,8 @@ export default function App() {
         <div className="canvas-wrap">
           <BraceletScene />
           <div className="circumference muted">
-            Circumference: <strong>{circumference.mm} mm</strong> |{' '}
-            <strong>{circumference.in} in</strong>
+            Estimated Final Size: <strong>{circumference.in} in</strong> ({circumference.mm / 10}{' '}
+            cm)
           </div>
         </div>
         <aside className={`side ${sideOpen ? 'open' : 'closed'}`}>

@@ -142,6 +142,27 @@ const texLarvikite = new THREE.TextureLoader().load('/textures/larvikite.jpg')
 texLarvikite.wrapS = texLarvikite.wrapT = THREE.RepeatWrapping
 texLarvikite.colorSpace = THREE.SRGBColorSpace
 
+// --- Brightness ranges per gem family (edit to taste) ---
+const GEM_BRIGHTNESS_RANGE: Record<string, [number, number]> = {
+  whitejade: [0.92, 1.08],
+  malachite: [0.8, 1.2],
+  larvikite: [0.8, 1.2],
+  tigereye: [0.8, 1.2],
+  bronzite: [0.8, 1.2],
+  rubyzoisite: [0.9, 1.1],
+  quartz: [0.65, 1.25],
+  mapstone: [0.8, 1.1],
+  carved: [0.95, 1.05], // color-based; mild variance if desired
+  // onyx is pure color — left constant by default
+}
+function rangeFor(id: string): [number, number] {
+  const key = Object.keys(GEM_BRIGHTNESS_RANGE).find((k) => id.startsWith(k))
+  return key ? GEM_BRIGHTNESS_RANGE[key] : [0.95, 1.05]
+}
+function randomIn([lo, hi]: [number, number]) {
+  return lo + Math.random() * (hi - lo)
+}
+
 // Thickness map texture
 function makeThicknessMap(size = 512) {
   const c = document.createElement('canvas')
@@ -216,11 +237,10 @@ function createLogoTopMaterial(
       img.onload = () => {
         const m = s * 0.08,
           w = s - m * 2,
-          h = w // larger + rotate -90
+          h = w
         mg.clearRect(0, 0, s, s)
         mg.save()
         mg.translate(s / 2, s / 2)
-        // rotation removed; draw upright
         mg.drawImage(img, -w / 2, -h / 2, w, h)
         mg.restore()
         mg.globalCompositeOperation = 'source-in'
@@ -253,12 +273,38 @@ export function BraceletScene() {
   const [ready, setReady] = useState(false)
   const texCache = useRef(new Map<string, THREE.Texture | null | undefined>()).current
 
+  // --- NEW: persistent per-slot random properties (spin around pole + brightness) ---
+  const prevBraceletRef = useRef<BeadId[]>([])
+  const slotPropsRef = useRef<Map<number, { spin: number; bright: number }>>(new Map())
+
+  useEffect(() => {
+    if (!ready) return
+    const prev = prevBraceletRef.current
+    const map = slotPropsRef.current
+
+    for (let idx = 0; idx < bracelet.length; idx++) {
+      const id = bracelet[idx]
+      if (prev[idx] !== id || !map.has(idx)) {
+        const [lo, hi] = rangeFor(id)
+        map.set(idx, {
+          spin: (Math.random() * 2 - 1) * Math.PI, // stable spin for this slot
+          bright: randomIn([lo, hi]), // stable brightness for this slot
+        })
+      }
+    }
+    // Drop stale slots if array is shorter now
+    for (const key of Array.from(map.keys())) {
+      if (key >= bracelet.length) map.delete(key)
+    }
+
+    prevBraceletRef.current = bracelet.slice()
+  }, [bracelet, ready])
+
   useEffect(() => {
     if (!ready || !groupRef.current || !cameraRef.current) return
     const g = groupRef.current
     const cam = cameraRef.current
     const ctrls = controlsRef.current || undefined
-    // Fit after the current frame to ensure sizes are updated
     requestAnimationFrame(() => fitCameraToGroup(g, cam, ctrls, 1.25))
   }, [bracelet, ready])
 
@@ -306,14 +352,15 @@ export function BraceletScene() {
       return mesh
     }
 
-    const gemMaterial = (id: string) => {
+    // CHANGE: gemMaterial now accepts `bright` to modulate instance brightness
+    const gemMaterial = (id: string, bright = 1) => {
       const thicknessMap =
         texCache.get('wj-thick') || texCache.set('wj-thick', makeThicknessMap()).get('wj-thick')
 
       if (id.startsWith('whitejade')) {
         const sizeMM = BEADS['whitejade-10'].sizeMM
         const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5 // ~50% of diameter as optical thickness
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texWhiteJade,
           roughness: 0.32,
           metalness: 0.0,
@@ -326,28 +373,30 @@ export function BraceletScene() {
           attenuationDistance: 0.16,
           clearcoat: 1.0,
           clearcoatRoughness: 0.2,
-
           envMapIntensity: 2.2,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('malachite')) {
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texMalachite,
           metalness: 0,
           roughness: 0.14,
           clearcoat: 0.12,
           clearcoatRoughness: 0.3,
           ior: 1.7,
-
           envMapIntensity: 0,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('larvikite')) {
         const sizeMM = BEADS['larvikite-10'].sizeMM
         const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texLarvikite,
           metalness: 0,
           roughness: 0,
@@ -359,15 +408,16 @@ export function BraceletScene() {
           attenuationDistance: 0.16,
           clearcoat: 0.6,
           clearcoatRoughness: 1,
-
           envMapIntensity: 0,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('tigereye')) {
         const sizeMM = BEADS['tigereye-10'].sizeMM
         const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texTigerEye,
           metalness: 0,
           roughness: 0.14,
@@ -379,13 +429,14 @@ export function BraceletScene() {
           attenuationDistance: 0.16,
           clearcoat: 1.0,
           clearcoatRoughness: 0.2,
-
           envMapIntensity: 0,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('bronzite')) {
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texBronzite,
           metalness: 0.0,
           roughness: 0.45,
@@ -394,13 +445,14 @@ export function BraceletScene() {
           ior: 0.72,
           bumpMap: bmBronzite,
           bumpScale: 0.3,
-
           envMapIntensity: 0.7,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('rubyzoisite')) {
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texRubyZoisite,
           metalness: 0.0,
           roughness: 0.25,
@@ -409,13 +461,14 @@ export function BraceletScene() {
           ior: 0.8,
           bumpMap: bmSparkle,
           bumpScale: -1.5,
-
           envMapIntensity: 1,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('quartz')) {
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texQuartz,
           metalness: 0.0,
           roughness: 0.22,
@@ -424,25 +477,28 @@ export function BraceletScene() {
           ior: 0.8,
           bumpMap: bmSparkle,
           bumpScale: -1,
-
           envMapIntensity: 1,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('mapstone')) {
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           map: texMapstone,
           metalness: 0.0,
           roughness: 0.8,
           clearcoat: 0.1,
           clearcoatRoughness: 0.65,
           ior: 0.65,
-
           envMapIntensity: 1,
         })
+        m.color.setScalar(bright)
+        return m
       }
 
       if (id.startsWith('onyx')) {
+        // Pure color (no map) — left consistent; opt-in brightness if desired.
         return new THREE.MeshPhysicalMaterial({
           color: 0x000000,
           metalness: 0.5,
@@ -454,7 +510,7 @@ export function BraceletScene() {
       }
 
       if (id.startsWith('carved')) {
-        return new THREE.MeshPhysicalMaterial({
+        const m = new THREE.MeshPhysicalMaterial({
           color: 0x181818,
           displacementMap: dmCarved,
           displacementScale: 0.12,
@@ -467,6 +523,8 @@ export function BraceletScene() {
           clearcoatRoughness: 0.4,
           ior: 1.4,
         })
+        // m.color.multiplyScalar(bright) // enable if you want carved variance too
+        return m
       }
     }
 
@@ -543,13 +601,20 @@ export function BraceletScene() {
         const up = new THREE.Vector3(0, 1, 0)
         const tangent = new THREE.Vector3().crossVectors(up, radial).normalize() // along cord
         const pos = new THREE.Vector3().copy(radial).multiplyScalar(radius)
-        const mesh = new THREE.Mesh(sphereGeoMM(bead.sizeMM!), gemMaterial(bead.id))
+        // --- stable per-slot props
+        const slotProps = slotPropsRef.current.get(i) || { spin: 0, bright: 1 }
+
+        const mesh = new THREE.Mesh(
+          sphereGeoMM(bead.sizeMM!),
+          gemMaterial(bead.id, slotProps.bright)
+        )
         // Align sphere Y-axis (UV poles) to the cord/tangent so poles sit between beads
         const X = new THREE.Vector3().crossVectors(tangent, radial).normalize() // completes orthonormal basis
         const basis = new THREE.Matrix4().makeBasis(X, tangent, radial)
         mesh.quaternion.setFromRotationMatrix(basis)
-        // Add a random spin around the pole axis to avoid uniform look
-        mesh.rotateY((Math.random() - 0.5) * Math.PI)
+        // Stable random spin around the pole axis to avoid uniform look
+        mesh.rotateY(slotProps.spin)
+
         mesh.position.copy(pos)
         group.add(mesh)
         theta += step
@@ -721,11 +786,11 @@ export function BraceletScene() {
     const env = new RoomEnvironment()
     const envMap = pmrem.fromScene(env, 0.04).texture
     scene.environment = envMap
-    scene.environmentIntensity = 0.05
+    scene.environmentIntensity = 0.08
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100)
     cameraRef.current = camera
-    camera.position.set(0.9, 0.9, 2.2)
+    camera.position.set(0.9, 0.9, 0.6)
 
     const key = new THREE.DirectionalLight(0xffffff, 1.8)
     key.position.set(3, 5, 4)
