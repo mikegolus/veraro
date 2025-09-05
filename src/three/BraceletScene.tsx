@@ -77,68 +77,70 @@ function circumferenceFrom(bracelet: BeadId[]) {
   )
 }
 
+const loader = new THREE.TextureLoader()
+
 // Bronzite texture from image
-const texBronzite = new THREE.TextureLoader().load('/textures/bronzite.jpg')
+const texBronzite = loader.load('/textures/bronzite.jpg')
 texBronzite.wrapS = texBronzite.wrapT = THREE.RepeatWrapping
 texBronzite.colorSpace = THREE.SRGBColorSpace
 
-const bmBronzite = new THREE.TextureLoader().load('/textures/bronzite-bump-map.jpg')
+const bmBronzite = loader.load('/textures/bronzite-bump-map.jpg')
 bmBronzite.wrapS = bmBronzite.wrapT = THREE.RepeatWrapping
 
-const texMalachite = new THREE.TextureLoader().load('/textures/malachite.jpg')
+const texMalachite = loader.load('/textures/malachite.jpg')
 texMalachite.wrapS = texMalachite.wrapT = THREE.RepeatWrapping
 texMalachite.colorSpace = THREE.SRGBColorSpace
 
-const texTigerEye = new THREE.TextureLoader().load('/textures/tigereye.jpg')
+const texTigerEye = loader.load('/textures/tigereye.jpg')
 texTigerEye.wrapS = texTigerEye.wrapT = THREE.RepeatWrapping
 texTigerEye.colorSpace = THREE.SRGBColorSpace
 
-const texMapstone = new THREE.TextureLoader().load('/textures/mapstone.jpg')
+const texMapstone = loader.load('/textures/mapstone.jpg')
 texMapstone.wrapS = texMapstone.wrapT = THREE.RepeatWrapping
 texMapstone.colorSpace = THREE.SRGBColorSpace
 
-const texWhiteJade = new THREE.TextureLoader().load('/textures/white-jade.jpg')
+const texWhiteJade = loader.load('/textures/white-jade.jpg')
 texWhiteJade.wrapS = texWhiteJade.wrapT = THREE.RepeatWrapping
 texWhiteJade.colorSpace = THREE.SRGBColorSpace
 
-const tmWhiteJade = new THREE.TextureLoader().load('/textures/white-jade-transmission-map.jpg')
+const tmWhiteJade = loader.load('/textures/white-jade-transmission-map.jpg')
 tmWhiteJade.wrapS = tmWhiteJade.wrapT = THREE.RepeatWrapping
 
-const texLavastone = new THREE.TextureLoader().load('/textures/lavastone.jpg')
+const texLavastone = loader.load('/textures/lavastone.jpg')
 texLavastone.wrapS = texLavastone.wrapT = THREE.RepeatWrapping
 texLavastone.colorSpace = THREE.SRGBColorSpace
-const bmLavastone = new THREE.TextureLoader().load('/textures/lavastone-bump-map.jpg')
+const bmLavastone = loader.load('/textures/lavastone-bump-map.jpg')
 bmLavastone.wrapS = bmLavastone.wrapT = THREE.RepeatWrapping
-const rmLavastone = new THREE.TextureLoader().load('/textures/lavastone-roughness-map.jpg')
+const rmLavastone = loader.load('/textures/lavastone-roughness-map.jpg')
 rmLavastone.wrapS = rmLavastone.wrapT = THREE.RepeatWrapping
 
-const bmBlackMetal = new THREE.TextureLoader().load('/textures/blackmetal-bump-map.jpg')
+const bmBlackMetal = loader.load('/textures/blackmetal-bump-map.jpg')
 bmBlackMetal.wrapS = bmBlackMetal.wrapT = THREE.RepeatWrapping
 
-const texAntiqueBrass = new THREE.TextureLoader().load('/textures/antiquebrass.jpg')
+const texAntiqueBrass = loader.load('/textures/antiquebrass.jpg')
 texAntiqueBrass.wrapS = texAntiqueBrass.wrapT = THREE.RepeatWrapping
 texAntiqueBrass.colorSpace = THREE.SRGBColorSpace
-const bmScratches = new THREE.TextureLoader().load('/textures/scratches-bump-map.jpg')
+const bmScratches = loader.load('/textures/scratches-bump-map.jpg')
 bmScratches.wrapS = bmScratches.wrapT = THREE.RepeatWrapping
 
-const texRubyZoisite = new THREE.TextureLoader().load('/textures/rubyzoisite.jpg')
+const texRubyZoisite = loader.load('/textures/rubyzoisite.jpg')
 texRubyZoisite.wrapS = texRubyZoisite.wrapT = THREE.RepeatWrapping
 texRubyZoisite.colorSpace = THREE.SRGBColorSpace
 
-const texQuartz = new THREE.TextureLoader().load('/textures/quartz.jpg')
+const texQuartz = loader.load('/textures/quartz.jpg')
 texQuartz.wrapS = texQuartz.wrapT = THREE.RepeatWrapping
 texQuartz.colorSpace = THREE.SRGBColorSpace
 
-const bmSparkle = new THREE.TextureLoader().load('/textures/sparkle-bump-map.jpg')
+const bmSparkle = loader.load('/textures/sparkle-bump-map.jpg')
 bmSparkle.wrapS = bmSparkle.wrapT = THREE.RepeatWrapping
 
-const dmCarved = new THREE.TextureLoader().load('/textures/carved-displacement-map.jpg')
+const dmCarved = loader.load('/textures/carved-displacement-map.jpg')
 dmCarved.wrapS = dmCarved.wrapT = THREE.RepeatWrapping
 
-const bmCarved = new THREE.TextureLoader().load('/textures/carved-bump-map.jpg')
+const bmCarved = loader.load('/textures/carved-bump-map.jpg')
 bmCarved.wrapS = bmCarved.wrapT = THREE.RepeatWrapping
 
-const texLarvikite = new THREE.TextureLoader().load('/textures/larvikite.jpg')
+const texLarvikite = loader.load('/textures/larvikite.jpg')
 texLarvikite.wrapS = texLarvikite.wrapT = THREE.RepeatWrapping
 texLarvikite.colorSpace = THREE.SRGBColorSpace
 
@@ -777,7 +779,7 @@ export function BraceletScene() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 2
+    renderer.toneMappingExposure = 1.3
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     el.appendChild(renderer.domElement)
@@ -786,7 +788,7 @@ export function BraceletScene() {
     const env = new RoomEnvironment()
     const envMap = pmrem.fromScene(env, 0.04).texture
     scene.environment = envMap
-    scene.environmentIntensity = 0.08
+    scene.environmentIntensity = 0.3
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100)
     cameraRef.current = camera
@@ -798,7 +800,6 @@ export function BraceletScene() {
     const rim = new THREE.DirectionalLight(0xffffff, 1.1)
     rim.position.set(-4, 3, -2)
     scene.add(rim)
-    scene.add(new THREE.AmbientLight(0xffffff, 0.52))
 
     const group = new THREE.Group()
     scene.add(group)
