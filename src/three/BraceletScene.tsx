@@ -29,33 +29,61 @@ const disposeObject = (root: THREE.Object3D) => {
   })
 }
 
-function fitCameraToGroup(
-  group: THREE.Group,
-  camera: THREE.PerspectiveCamera,
-  controls?: OrbitControls,
-  padding: number = 1.3
+// ---------- STABLE CAMERA FIT + EASING ----------
+function stableRingRadiusUnits(bracelet: BeadId[]) {
+  const Cmm = circumferenceFrom(bracelet)
+  const C = Cmm * MM_TO_UNITS
+  return C / (2 * Math.PI)
+}
+
+function maxBeadSizeMM(bracelet: BeadId[]) {
+  let m = 6
+  for (const id of bracelet) {
+    const b = BEADS[id]
+    if (b.kind === 'spacer') m = Math.max(m, b.sizeMM ?? 6)
+    else if (b.sizeMM) m = Math.max(m, b.sizeMM)
+  }
+  return m
+}
+
+/** Compute desired fit distance and bounding radius R (no side effects). */
+function computeFitDistance(
+  ringRadiusUnits: number,
+  maxBeadSizeMMVal: number,
+  cameraAspect: number,
+  cameraFov: number,
+  padding = 1.25,
+  extraMarginMM = 2
 ) {
-  const box = new THREE.Box3().setFromObject(group)
-  if (!isFinite(box.min.x) || !isFinite(box.max.x)) return
-  const size = new THREE.Vector3()
-  box.getSize(size)
-  const center = new THREE.Vector3()
-  box.getCenter(center)
-  const radius = 0.5 * Math.max(size.x, size.y, size.z)
+  const beadHalf = (maxBeadSizeMMVal * MM_TO_UNITS) / 2
+  const margin = (extraMarginMM * MM_TO_UNITS) / 2
+  const R = ringRadiusUnits + beadHalf + margin
 
-  const vFov = THREE.MathUtils.degToRad(camera.fov)
-  const fitHeightDistance = radius / Math.sin(vFov / 2)
-  const fitWidthDistance = radius / Math.sin(Math.atan(Math.tan(vFov / 2) * camera.aspect))
+  const vFov = THREE.MathUtils.degToRad(cameraFov)
+  const fitHeightDistance = R / Math.sin(vFov / 2)
+  const fitWidthDistance = R / Math.sin(Math.atan(Math.tan(vFov / 2) * cameraAspect))
   const distance = Math.max(fitHeightDistance, fitWidthDistance) * padding
+  return { distance, R }
+}
 
-  const dir = new THREE.Vector3()
-    .subVectors(camera.position, controls?.target ?? center)
-    .normalize()
-  camera.position.copy(center).addScaledVector(dir, distance)
-  camera.near = Math.max(0.01, distance - radius * 2)
-  camera.far = distance + radius * 4
+// Smoothstep-ish easing (cubic in/out)
+function easeInOutCubic(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+function snapCameraToDistance(
+  distance: number,
+  R: number,
+  camera: THREE.PerspectiveCamera,
+  controls?: OrbitControls
+) {
+  const target = controls?.target ?? new THREE.Vector3(0, 0, 0)
+  const dir = new THREE.Vector3().subVectors(camera.position, target).normalize()
+  camera.position.copy(target).addScaledVector(dir, distance)
+  camera.near = Math.max(0.01, distance - R * 2)
+  camera.far = distance + R * 4
   camera.updateProjectionMatrix()
-  controls && (controls.target.copy(center), controls.update())
+  controls?.update()
 }
 
 import { BEADS } from '../beads'
@@ -101,9 +129,6 @@ texMapstone.colorSpace = THREE.SRGBColorSpace
 const texWhiteJade = loader.load('/textures/white-jade.jpg')
 texWhiteJade.wrapS = texWhiteJade.wrapT = THREE.RepeatWrapping
 texWhiteJade.colorSpace = THREE.SRGBColorSpace
-
-const tmWhiteJade = loader.load('/textures/white-jade-transmission-map.jpg')
-tmWhiteJade.wrapS = tmWhiteJade.wrapT = THREE.RepeatWrapping
 
 const texLavastone = loader.load('/textures/lavastone.jpg')
 texLavastone.wrapS = texLavastone.wrapT = THREE.RepeatWrapping
@@ -281,7 +306,7 @@ function createSlatePhysicalMaterial(opts: {
     map: slateMap,
     roughness,
     metalness,
-    transparent: true,
+    transparent: false,
     clearcoat: 0.0,
     depthWrite: true,
   }
@@ -367,6 +392,74 @@ export function BraceletScene() {
   const prevBraceletRef = useRef<BeadId[]>([])
   const slotPropsRef = useRef<Map<number, { spin: number; bright: number }>>(new Map())
 
+  // --- CAMERA FIT STATE / ANIMATION ---
+  const lastFitKeyRef = useRef<string>('')
+  const firstFitDoneRef = useRef(false)
+  const fitAnimRef = useRef<{
+    active: boolean
+    from: number
+    to: number
+    R: number
+    start: number
+    duration: number
+    dir: THREE.Vector3
+    target: THREE.Vector3
+  } | null>(null)
+
+  const startFitAnimation = useCallback((toDistance: number, R: number, durationMs: number) => {
+    const cam = cameraRef.current
+    const ctrls = controlsRef.current
+    if (!cam) return
+
+    const target = (ctrls?.target ?? new THREE.Vector3(0, 0, 0)).clone()
+    const from = cam.position.distanceTo(target)
+
+    // If tiny delta or zero duration, just snap
+    if (durationMs <= 0 || Math.abs(toDistance - from) < 1e-4) {
+      snapCameraToDistance(toDistance, R, cam, ctrls ?? undefined)
+      fitAnimRef.current = null
+      return
+    }
+
+    const dir = new THREE.Vector3().subVectors(cam.position, target).normalize()
+    fitAnimRef.current = {
+      active: true,
+      from,
+      to: toDistance,
+      R,
+      start: performance.now(),
+      duration: durationMs,
+      dir,
+      target,
+    }
+  }, [])
+
+  const doStableFit = useCallback(
+    (durationMs = 450) => {
+      const cam = cameraRef.current
+      if (!cam) return
+      const ctrls = controlsRef.current || undefined
+      const ringR = stableRingRadiusUnits(useStore.getState().bracelet)
+      const maxMM = maxBeadSizeMM(useStore.getState().bracelet)
+      const key = `${ringR.toFixed(4)}|${maxMM}|${cam.aspect.toFixed(4)}|${cam.fov}`
+
+      if (lastFitKeyRef.current !== key) {
+        const { distance, R } = computeFitDistance(ringR, maxMM, cam.aspect, cam.fov, 1.25, 2)
+
+        // First ever fit: snap, then mark done
+        if (!firstFitDoneRef.current) {
+          startFitAnimation(distance, R, 0)
+          firstFitDoneRef.current = true
+        } else {
+          startFitAnimation(distance, R, durationMs)
+        }
+
+        lastFitKeyRef.current = key
+      }
+    },
+    [startFitAnimation]
+  )
+
   useEffect(() => {
     if (!ready) return
     const prev = prevBraceletRef.current
@@ -394,8 +487,11 @@ export function BraceletScene() {
   }, [])
 
   useEffect(() => {
-    if (ready) updatePlaneFalloff()
-  }, [bracelet, ready, updatePlaneFalloff])
+    if (ready) {
+      updatePlaneFalloff()
+      doStableFit(450) // ease on bracelet changes
+    }
+  }, [bracelet, ready, updatePlaneFalloff, doStableFit])
 
   useEffect(() => {
     if (!groupRef.current || !sceneRef.current || !ready) return
@@ -449,20 +545,19 @@ export function BraceletScene() {
 
       if (id.startsWith('whitejade')) {
         const sizeMM = BEADS['whitejade-10'].sizeMM
-        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5
+        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.75
         const m = new THREE.MeshPhysicalMaterial({
           map: texWhiteJade,
-          roughness: 0.32,
+          roughness: 0.18,
           metalness: 0.0,
-          transmission: 0.78,
-          transmissionMap: tmWhiteJade,
-          ior: 1.35,
+          transmission: 0.72,
+          ior: 1.78,
           thickness: thicknessUnits,
           thicknessMap,
-          attenuationColor: '#eef7f1',
+          attenuationColor: '#f7f3e4ff',
           attenuationDistance: 0.16,
           clearcoat: 1.0,
-          clearcoatRoughness: 0.2,
+          clearcoatRoughness: 0.12,
           envMapIntensity: 2.2,
         })
         m.color.setScalar(bright)
@@ -848,7 +943,10 @@ export function BraceletScene() {
       theta += stepGroup
       i = j
     }
-  }, [bracelet, ready, texCache])
+
+    // keep camera fit (animated) for current size/aspect:
+    doStableFit(450)
+  }, [bracelet, ready, texCache, doStableFit])
 
   useEffect(() => {
     const el = ref.current!
@@ -858,7 +956,7 @@ export function BraceletScene() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.65
+    renderer.toneMappingExposure = 1.5
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.shadowMap.enabled = true
@@ -905,7 +1003,6 @@ export function BraceletScene() {
     const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE, 1, 1)
     planeGeo.rotateX(-Math.PI / 2)
 
-    // control scale of slate here: bigger numbers = smaller-looking slate
     texSlate.wrapS = texSlate.wrapT = THREE.RepeatWrapping
     texSlate.repeat.set(10, 10)
     texSlate.needsUpdate = true
@@ -942,39 +1039,40 @@ export function BraceletScene() {
       renderer.setSize(w, h, false)
       camera.aspect = w / h
       camera.updateProjectionMatrix()
+      // animate a bit on aspect changes
+      doStableFit(300)
     }
     const ro = new ResizeObserver(resize)
     ro.observe(el)
     resize()
 
-    // Init vignette from bracelet
+    // Init vignette from bracelet & first (snapped) fit
     const C0 = circumferenceFrom(useStore.getState().bracelet) * MM_TO_UNITS
     const r0 = C0 / (2 * Math.PI)
     planeUniformsRef.current.uRadius.value = r0 * 1.35
     planeUniformsRef.current.uFeather.value = r0 * 2.4
     plane.position.y = -(Math.max(6, 10) * MM_TO_UNITS) * 0.5
+    doStableFit(0) // first fit: snap
 
     let raf = 0
     const tick = () => {
-      controls.update()
-
-      // --- sync plane uniforms to shader every frame (if compiled) ---
-      const p = planeMeshRef.current as THREE.Mesh | null
-      if (p) {
-        const mat = p.material as THREE.MeshPhysicalMaterial & {
-          userData?: { shader?: any; uniforms?: any }
-        }
-        const shader = mat?.userData?.shader
-        const U = planeUniformsRef.current
-        if (shader && U) {
-          const su = shader.uniforms
-          su.uGain.value = U.uGain.value
-          su.uRadius.value = U.uRadius.value
-          su.uFeather.value = U.uFeather.value
-        }
+      // --- run camera fit animation first, then let controls damp ---
+      const cam = cameraRef.current
+      const ctrls = controlsRef.current
+      const anim = fitAnimRef.current
+      if (cam && anim && anim.active) {
+        const now = performance.now()
+        const t = Math.min(1, (now - anim.start) / anim.duration)
+        const k = easeInOutCubic(t)
+        const dist = THREE.MathUtils.lerp(anim.from, anim.to, k)
+        cam.position.copy(anim.target).addScaledVector(anim.dir, dist)
+        cam.near = Math.max(0.01, dist - anim.R * 2)
+        cam.far = dist + anim.R * 4
+        cam.updateProjectionMatrix()
+        if (t >= 1) anim.active = false
       }
-      // ------------------------------------------
 
+      ctrls?.update()
       renderer.render(scene, camera)
       raf = requestAnimationFrame(tick)
     }
@@ -994,16 +1092,7 @@ export function BraceletScene() {
         planeMeshRef.current = null
       }
     }
-  }, [])
-
-  // Camera fit after changes
-  useEffect(() => {
-    if (!ready || !groupRef.current || !cameraRef.current) return
-    const g = groupRef.current
-    const cam = cameraRef.current
-    const ctrls = controlsRef.current || undefined
-    requestAnimationFrame(() => fitCameraToGroup(g, cam, ctrls, 1.25))
-  }, [bracelet, ready])
+  }, [doStableFit])
 
   // Keep plane just under beads as sizes change
   useEffect(() => {
