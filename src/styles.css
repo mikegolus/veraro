@@ -429,3 +429,8 @@ canvas {
 .select-item.open .chev {
   transform: rotate(180deg);
 }
+.details {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted);
+}

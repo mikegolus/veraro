@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { BEADS } from '../beads'
 import { configurator } from '../lib/configurator'
-import { labelOfGemstoneType } from '../lib/helpers'
+import { getCircumferenceMM, labelOfGemstoneType } from '../lib/helpers'
 import { useStore } from '../store'
 import { GEM_TYPES, type BeadId, type GemType } from '../types'
 
@@ -442,13 +442,21 @@ export const Controls = () => {
   const [triadFocal, setTriadFocal] = useState<Focal>(TRIAD_OPTIONS[0])
   const [spacers, setSpacers] = useState(false)
 
+  const circumference = useMemo(() => {
+    const circumferenceMM = getCircumferenceMM(bracelet)
+    return {
+      mm: circumferenceMM,
+      in: (circumferenceMM * (1 / 25.4)).toFixed(1),
+    }
+  }, [bracelet])
+
   // Run configurator whenever controls change
   useEffect(() => {
     const newBracelet = configurator({
       targetCircumferenceMM: targetCircumferenceMM.sizeMM,
       primary,
       mainSizeMM: 10,
-      secondary: secondary ?? undefined,
+      secondary: style.id !== 'array' ? (secondary ?? undefined) : undefined,
       spacers,
       focal:
         style.id === 'solitaire'
@@ -478,21 +486,6 @@ export const Controls = () => {
       <div className="main">
         <div className="grid">
           <div className="option-item">
-            <label>Target Size</label>
-            <div className="options">
-              {TARGET_SIZES.map((opt) => (
-                <button
-                  key={opt.sizeMM}
-                  onClick={() => setTargetCircumferenceMM(opt)}
-                  className={`btn small${targetCircumferenceMM === opt ? ' primary' : ''}`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="option-item">
             <label>Style</label>
             <div className="options styles">
               {STYLES.map((opt) => (
@@ -519,16 +512,18 @@ export const Controls = () => {
               getLabel={labelOfGemstoneType}
             />
 
-            <SelectItem
-              label="Alternating"
-              value={secondary}
-              onChange={setSecondary}
-              options={GEM_OPTIONS}
-              getLabel={(opt) => (opt ? labelOfGemstoneType(opt) : undefined)}
-              nullable
-              emptyLabel="---"
-              emptyOptionLabel="None"
-            />
+            {style.id !== 'array' ? (
+              <SelectItem
+                label="Alternating"
+                value={secondary}
+                onChange={setSecondary}
+                options={GEM_OPTIONS}
+                getLabel={(opt) => (opt ? labelOfGemstoneType(opt) : undefined)}
+                nullable
+                emptyLabel="---"
+                emptyOptionLabel="None"
+              />
+            ) : null}
 
             {style.id === 'solitaire' ? (
               <SelectItem
@@ -569,6 +564,24 @@ export const Controls = () => {
                 />
                 Include Spacers
               </label>
+            </div>
+          </div>
+          <div className="option-item">
+            <label>Wrist Size</label>
+            <div className="options">
+              {TARGET_SIZES.map((opt) => (
+                <button
+                  key={opt.sizeMM}
+                  onClick={() => setTargetCircumferenceMM(opt)}
+                  className={`btn small${targetCircumferenceMM === opt ? ' primary' : ''}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="details">
+              Bracelets are made to your size, with small upward adjustments as needed. This design
+              will be about <strong>{circumference.in}&Prime;</strong>.
             </div>
           </div>
         </div>

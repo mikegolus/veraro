@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
@@ -48,7 +48,6 @@ function fitCameraToGroup(
   const fitWidthDistance = radius / Math.sin(Math.atan(Math.tan(vFov / 2) * camera.aspect))
   const distance = Math.max(fitHeightDistance, fitWidthDistance) * padding
 
-  // Move camera along its current direction, keep target at center
   const dir = new THREE.Vector3()
     .subVectors(camera.position, controls?.target ?? center)
     .normalize()
@@ -77,9 +76,9 @@ function circumferenceFrom(bracelet: BeadId[]) {
   )
 }
 
+// -------------------- TEXTURES --------------------
 const loader = new THREE.TextureLoader()
 
-// Bronzite texture from image
 const texBronzite = loader.load('/textures/bronzite.jpg')
 texBronzite.wrapS = texBronzite.wrapT = THREE.RepeatWrapping
 texBronzite.colorSpace = THREE.SRGBColorSpace
@@ -144,7 +143,13 @@ const texLarvikite = loader.load('/textures/larvikite.jpg')
 texLarvikite.wrapS = texLarvikite.wrapT = THREE.RepeatWrapping
 texLarvikite.colorSpace = THREE.SRGBColorSpace
 
-// --- Brightness ranges per gem family (edit to taste) ---
+// NEW: Slate surface texture (image file should exist at this path)
+const texSlate = loader.load('/textures/slate-surface.jpg')
+texSlate.wrapS = texSlate.wrapT = THREE.RepeatWrapping
+texSlate.colorSpace = THREE.SRGBColorSpace
+texSlate.anisotropy = 8
+
+// -------------------- GEM BRIGHTNESS RNG --------------------
 const GEM_BRIGHTNESS_RANGE: Record<string, [number, number]> = {
   whitejade: [0.92, 1.08],
   malachite: [0.8, 1.2],
@@ -152,10 +157,9 @@ const GEM_BRIGHTNESS_RANGE: Record<string, [number, number]> = {
   tigereye: [0.8, 1.2],
   bronzite: [0.8, 1.2],
   rubyzoisite: [0.9, 1.1],
-  quartz: [0.65, 1.25],
+  quartz: [0.65, 1.2],
   mapstone: [0.8, 1.1],
-  carved: [0.95, 1.05], // color-based; mild variance if desired
-  // onyx is pure color — left constant by default
+  carved: [0.95, 1.05],
 }
 function rangeFor(id: string): [number, number] {
   const key = Object.keys(GEM_BRIGHTNESS_RANGE).find((k) => id.startsWith(k))
@@ -165,15 +169,13 @@ function randomIn([lo, hi]: [number, number]) {
   return lo + Math.random() * (hi - lo)
 }
 
-// Thickness map texture
+// -------------------- UTILS --------------------
 function makeThicknessMap(size = 512) {
   const c = document.createElement('canvas')
   c.width = c.height = size
   const g = c.getContext('2d')!
-  // Very soft noise: big blobs, no harsh edges
   g.fillStyle = '#ccc'
   g.fillRect(0, 0, size, size)
-  // 3–4 passes of large, faint blotches
   for (let i = 0; i < 4; i++) {
     const r = size * (0.18 + i * 0.12)
     g.globalAlpha = 0.08 + i * 0.04
@@ -206,7 +208,6 @@ function createLogoTopMaterial(
   const cnv = document.createElement('canvas')
   cnv.width = cnv.height = s
   const g = cnv.getContext('2d')!
-  // brushed background
   g.fillStyle = baseColor
   g.fillRect(0, 0, s, s)
   g.globalAlpha = 0.08
@@ -219,14 +220,12 @@ function createLogoTopMaterial(
   const tex = new THREE.CanvasTexture(cnv)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 8
-  const mat = new THREE.MeshStandardMaterial({
+  const params: THREE.MeshStandardMaterialParameters = {
     map: tex,
     metalness,
     roughness,
-    bumpMap,
     bumpScale: 0.35,
-  })
-
+  }
   ;(async () => {
     try {
       const res = await fetch('/veraro-logo.svg')
@@ -261,10 +260,92 @@ function createLogoTopMaterial(
       console.warn('Logo load error', e)
     }
   })()
+  if (bumpMap) params.bumpMap = bumpMap
+  return new THREE.MeshStandardMaterial(params)
+}
+
+// --- MeshPhysicalMaterial with UV-based map tiling + world-space vignette
+function createSlatePhysicalMaterial(opts: {
+  slateMap: THREE.Texture
+  uniforms: {
+    uGain: { value: number }
+    uRadius: { value: number }
+    uFeather: { value: number }
+  }
+  roughness?: number
+  metalness?: number
+}) {
+  const { slateMap, uniforms, roughness = 0.9, metalness = 0.0 } = opts
+
+  const params: THREE.MeshPhysicalMaterialParameters = {
+    map: slateMap,
+    roughness,
+    metalness,
+    transparent: true,
+    clearcoat: 0.0,
+    depthWrite: true,
+  }
+
+  const mat = new THREE.MeshPhysicalMaterial(params)
+
+  // keep references so we can update uniforms after compile
+  mat.userData.uniforms = uniforms
+
+  mat.onBeforeCompile = (shader) => {
+    mat.userData.shader = shader // stash compiled shader
+
+    Object.assign(shader.uniforms, uniforms)
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `
+        #include <common>
+        varying vec3 vWorldPos;
+        `
+      )
+      .replace(
+        '#include <worldpos_vertex>',
+        `
+        #include <worldpos_vertex>
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        `
+      )
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `
+        #include <common>
+        varying vec3 vWorldPos;
+        uniform float uGain;
+        uniform float uRadius;
+        uniform float uFeather;
+        `
+      )
+      .replace(
+        '#include <map_fragment>',
+        `
+        #include <map_fragment>
+        float d = length(vWorldPos.xz);
+        float vignette = 1.0 - smoothstep(uRadius, uRadius + uFeather, d);
+        diffuseColor.rgb *= vignette * uGain;
+        diffuseColor.a   *= vignette;
+        `
+      )
+  }
+
+  // absorption/reflectance tweaks (optional, keep or tune)
+  mat.envMapIntensity = 0.05
+  mat.specularIntensity = 0.2
+  mat.ior = 1.2
+  mat.roughness = Math.min(0.98, mat.roughness + 0.05)
+  mat.color.multiplyScalar(0.9)
 
   return mat
 }
 
+// -------------------- COMPONENT --------------------
 export function BraceletScene() {
   const ref = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -275,7 +356,14 @@ export function BraceletScene() {
   const [ready, setReady] = useState(false)
   const texCache = useRef(new Map<string, THREE.Texture | null | undefined>()).current
 
-  // --- NEW: persistent per-slot random properties (spin around pole + brightness) ---
+  const planeMeshRef = useRef<THREE.Mesh | null>(null)
+  const planeUniformsRef = useRef({
+    uGain: { value: 0.8 },
+    uRadius: { value: 2.0 },
+    uFeather: { value: 4.0 },
+  })
+
+  // stable per-slot props (spin + brightness)
   const prevBraceletRef = useRef<BeadId[]>([])
   const slotPropsRef = useRef<Map<number, { spin: number; bright: number }>>(new Map())
 
@@ -283,37 +371,37 @@ export function BraceletScene() {
     if (!ready) return
     const prev = prevBraceletRef.current
     const map = slotPropsRef.current
-
     for (let idx = 0; idx < bracelet.length; idx++) {
       const id = bracelet[idx]
       if (prev[idx] !== id || !map.has(idx)) {
         const [lo, hi] = rangeFor(id)
-        map.set(idx, {
-          spin: (Math.random() * 2 - 1) * Math.PI, // stable spin for this slot
-          bright: randomIn([lo, hi]), // stable brightness for this slot
-        })
+        map.set(idx, { spin: (Math.random() * 2 - 1) * Math.PI, bright: randomIn([lo, hi]) })
       }
     }
-    // Drop stale slots if array is shorter now
     for (const key of Array.from(map.keys())) {
       if (key >= bracelet.length) map.delete(key)
     }
-
     prevBraceletRef.current = bracelet.slice()
   }, [bracelet, ready])
 
+  // auto-update vignette radius/feather from bracelet size
+  const updatePlaneFalloff = useCallback(() => {
+    const uniforms = planeUniformsRef.current
+    const C = circumferenceFrom(useStore.getState().bracelet) * MM_TO_UNITS
+    const ringR = C / (2 * Math.PI)
+    uniforms.uRadius.value = ringR * 1.35
+    uniforms.uFeather.value = ringR * 2.4
+  }, [])
+
   useEffect(() => {
-    if (!ready || !groupRef.current || !cameraRef.current) return
-    const g = groupRef.current
-    const cam = cameraRef.current
-    const ctrls = controlsRef.current || undefined
-    requestAnimationFrame(() => fitCameraToGroup(g, cam, ctrls, 1.25))
-  }, [bracelet, ready])
+    if (ready) updatePlaneFalloff()
+  }, [bracelet, ready, updatePlaneFalloff])
 
   useEffect(() => {
     if (!groupRef.current || !sceneRef.current || !ready) return
     const group = groupRef.current
 
+    // clear group
     while (group.children.length) {
       const obj = group.children.pop()!
       disposeObject(obj)
@@ -321,13 +409,13 @@ export function BraceletScene() {
 
     const circumference = circumferenceFrom(bracelet)
     const radius = (circumference / (2 * Math.PI)) * MM_TO_UNITS
+
     const goldMat = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color('#d4af37'),
       metalness: 1.0,
       roughness: 0.18,
     })
 
-    // helpers
     const placeSpacer = (bead: SpacerBead, ang: number) => {
       const t = bead.thicknessMM * MM_TO_UNITS
       const outerR = (bead.sizeMM / 2) * MM_TO_UNITS
@@ -348,20 +436,20 @@ export function BraceletScene() {
       g.computeVertexNormals()
       g.center()
       const mesh = new THREE.Mesh(g, goldMat)
+      mesh.castShadow = true
       const tangent = new THREE.Vector3(-Math.sin(ang), 0, Math.cos(ang)).normalize()
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent)
       mesh.setRotationFromQuaternion(q)
       return mesh
     }
 
-    // CHANGE: gemMaterial now accepts `bright` to modulate instance brightness
     const gemMaterial = (id: string, bright = 1) => {
       const thicknessMap =
         texCache.get('wj-thick') || texCache.set('wj-thick', makeThicknessMap()).get('wj-thick')
 
       if (id.startsWith('whitejade')) {
         const sizeMM = BEADS['whitejade-10'].sizeMM
-        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5 // ~50% of diameter as optical thickness
+        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5
         const m = new THREE.MeshPhysicalMaterial({
           map: texWhiteJade,
           roughness: 0.32,
@@ -500,7 +588,6 @@ export function BraceletScene() {
       }
 
       if (id.startsWith('onyx')) {
-        // Pure color (no map) — left consistent; opt-in brightness if desired.
         return new THREE.MeshPhysicalMaterial({
           color: 0x000000,
           metalness: 0.5,
@@ -512,7 +599,7 @@ export function BraceletScene() {
       }
 
       if (id.startsWith('carved')) {
-        const m = new THREE.MeshPhysicalMaterial({
+        return new THREE.MeshPhysicalMaterial({
           color: 0x181818,
           displacementMap: dmCarved,
           displacementScale: 0.12,
@@ -525,25 +612,20 @@ export function BraceletScene() {
           clearcoatRoughness: 0.4,
           ior: 1.4,
         })
-        // m.color.multiplyScalar(bright) // enable if you want carved variance too
-        return m
       }
     }
 
-    const roundedCubeGeo = (size: number, radius: number) => {
-      return new RoundedBoxGeometry(size, size, size, 4, size * radius)
-    }
+    const roundedCubeGeo = (size: number, radius: number) =>
+      new RoundedBoxGeometry(size, size, size, 4, size * radius)
 
-    const lavaMats = (() => {
-      return new THREE.MeshPhysicalMaterial({
-        map: texLavastone,
-        bumpMap: bmLavastone,
-        bumpScale: 2,
-        roughnessMap: rmLavastone,
-        roughness: 0.86,
-        metalness: 0.54,
-      })
-    })()
+    const lavaMats = new THREE.MeshPhysicalMaterial({
+      map: texLavastone,
+      bumpMap: bmLavastone,
+      bumpScale: 2,
+      roughnessMap: rmLavastone,
+      roughness: 0.86,
+      metalness: 0.54,
+    })
 
     const metalMat = (bead: Bead) => {
       const isStainless = bead.metalKind === 'stainless'
@@ -563,19 +645,21 @@ export function BraceletScene() {
             : isStainless
               ? 0.12
               : 0.45
-      const side = new THREE.MeshPhysicalMaterial({
+      const params: THREE.MeshPhysicalMaterialParameters = {
         color: new THREE.Color(base),
         metalness: 1.0,
         roughness: rough,
-        bumpMap:
-          bead.metalKind === 'black'
-            ? bmBlackMetal
-            : bead.metalKind === 'brass'
-              ? bmScratches
-              : null,
-        bumpScale: 0.35,
-      })
+      }
+      if (bead.metalKind === 'black') {
+        params.bumpMap = bmBlackMetal
+        params.bumpScale = 0.35
+      } else if (bead.metalKind === 'brass') {
+        params.bumpMap = bmScratches
+        params.bumpScale = 0.35
+      }
+      const side = new THREE.MeshPhysicalMaterial(params)
       if (isStainless) side.envMapIntensity = 1.4
+
       const top = createLogoTopMaterial(
         base,
         bead.logoColor || '#d4af37',
@@ -587,7 +671,7 @@ export function BraceletScene() {
       return { side, top }
     }
 
-    // Iterate through bracelet with grouping for adjacent 'flat' beads (spacer/cube)
+    // Build bracelet meshes
     let i = 0
     let theta = 0
     while (i < bracelet.length) {
@@ -601,20 +685,19 @@ export function BraceletScene() {
         const ang = theta + step / 2
         const radial = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang)).normalize()
         const up = new THREE.Vector3(0, 1, 0)
-        const tangent = new THREE.Vector3().crossVectors(up, radial).normalize() // along cord
+        const tangent = new THREE.Vector3().crossVectors(up, radial).normalize()
         const pos = new THREE.Vector3().copy(radial).multiplyScalar(radius)
-        // --- stable per-slot props
-        const slotProps = slotPropsRef.current.get(i) || { spin: 0, bright: 1 }
 
+        const slotProps = slotPropsRef.current.get(i) || { spin: 0, bright: 1 }
         const mesh = new THREE.Mesh(
           sphereGeoMM(bead.sizeMM!),
           gemMaterial(bead.id, slotProps.bright)
         )
-        // Align sphere Y-axis (UV poles) to the cord/tangent so poles sit between beads
-        const X = new THREE.Vector3().crossVectors(tangent, radial).normalize() // completes orthonormal basis
+        mesh.castShadow = true
+
+        const X = new THREE.Vector3().crossVectors(tangent, radial).normalize()
         const basis = new THREE.Matrix4().makeBasis(X, tangent, radial)
         mesh.quaternion.setFromRotationMatrix(basis)
-        // Stable random spin around the pole axis to avoid uniform look
         mesh.rotateY(slotProps.spin)
 
         mesh.position.copy(pos)
@@ -624,7 +707,7 @@ export function BraceletScene() {
         continue
       }
 
-      // group run of flat beads
+      // contiguous run of flat beads
       let j = i
       let totalMM = 0
       const run: Array<{ bead: Bead; id: BeadId; mm: number }> = []
@@ -645,33 +728,28 @@ export function BraceletScene() {
       const mmToRad = (mm: number) => (mm / circumference) * Math.PI * 2
       const stepGroup = mmToRad(totalMM)
       const angCenter = theta + stepGroup / 2
-
-      // First/last *center* angles from start of group
       const firstMM = run[0].mm
       const lastMM = run[run.length - 1].mm
       const sL = firstMM * 0.5
       const sR = totalMM - lastMM * 0.5
       const angL = theta + mmToRad(sL)
       const angR = theta + mmToRad(sR)
-
-      // Endpoints for centers on the circle
       const PL = new THREE.Vector3(Math.cos(angL), 0, Math.sin(angL)).multiplyScalar(radius)
       const PR = new THREE.Vector3(Math.cos(angR), 0, Math.sin(angR)).multiplyScalar(radius)
-
-      // Cord direction and basis
       const cord = new THREE.Vector3().subVectors(PR, PL)
       const cordLen = cord.length()
+
       if (cordLen < 1e-6) {
-        // Single flat bead fallback: place on arc
         const radial = new THREE.Vector3(Math.cos(angL), 0, Math.sin(angL)).normalize()
         let mesh: THREE.Mesh
         const only = run[0]
-        if (only.bead.kind === 'spacer') mesh = placeSpacer(only.bead, angL)
+        if (only.bead.kind === 'spacer') mesh = placeSpacer(only.bead as SpacerBead, angL)
         else {
           const size = only.bead.sizeMM * MM_TO_UNITS
-          if (only.bead.cubeType === 'lava')
+          if (only.bead.cubeType === 'lava') {
             mesh = new THREE.Mesh(roundedCubeGeo(size, 0.07), lavaMats)
-          else {
+            mesh.castShadow = true
+          } else {
             const mats = metalMat(only.bead)
             const matArr: THREE.Material[] = [
               mats.side,
@@ -682,6 +760,7 @@ export function BraceletScene() {
               mats.side,
             ]
             mesh = new THREE.Mesh(roundedCubeGeo(size, 0.04), matArr)
+            mesh.castShadow = true
           }
           mesh.quaternion.setFromRotationMatrix(
             new THREE.Matrix4().makeBasis(
@@ -697,9 +776,8 @@ export function BraceletScene() {
         i = j
         continue
       }
-      const cordDir = cord.clone().multiplyScalar(1 / cordLen)
 
-      // Orientation for cubes within run
+      const cordDir = cord.clone().multiplyScalar(1 / cordLen)
       const radialCenter = new THREE.Vector3(
         Math.cos(angCenter),
         0,
@@ -710,7 +788,6 @@ export function BraceletScene() {
         .normalize()
       const basis = new THREE.Matrix4().makeBasis(rightRC, new THREE.Vector3(0, 1, 0), radialCenter)
 
-      // Distribute bead centers by true mm spacing *linearly* along cord [PL..PR]
       let acc = 0
       for (let k = 0; k < run.length; k++) {
         const r = run[k]
@@ -720,9 +797,8 @@ export function BraceletScene() {
 
         let mesh: THREE.Mesh
         if (r.bead.kind === 'spacer') {
-          // build washer, then override rotation to align axis with cord
-          const tmm = r.bead.thicknessMM * MM_TO_UNITS
-          const outerR = (r.bead.sizeMM! / 2) * MM_TO_UNITS
+          const tmm = (r.bead as SpacerBead).thicknessMM * MM_TO_UNITS
+          const outerR = ((r.bead as SpacerBead).sizeMM! / 2) * MM_TO_UNITS
           const innerR = (2 / 2) * MM_TO_UNITS
           const halfT = tmm / 2
           const pts: THREE.Vector2[] = []
@@ -740,12 +816,14 @@ export function BraceletScene() {
           g.computeVertexNormals()
           g.center()
           mesh = new THREE.Mesh(g, goldMat)
+          mesh.castShadow = true
           const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cordDir)
           mesh.setRotationFromQuaternion(q)
         } else {
           const size = r.bead.sizeMM * MM_TO_UNITS
           if (r.bead.cubeType === 'lava') {
             mesh = new THREE.Mesh(roundedCubeGeo(size, 0.07), lavaMats)
+            mesh.castShadow = true
           } else {
             const mats = metalMat(r.bead)
             const matArr: THREE.Material[] = [
@@ -757,6 +835,7 @@ export function BraceletScene() {
               mats.side,
             ]
             mesh = new THREE.Mesh(roundedCubeGeo(size, 0.04), matArr)
+            mesh.castShadow = true
           }
           mesh.quaternion.setFromRotationMatrix(basis)
         }
@@ -779,40 +858,84 @@ export function BraceletScene() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.3
+    renderer.toneMappingExposure = 1.65
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
     el.appendChild(renderer.domElement)
 
     const pmrem = new THREE.PMREMGenerator(renderer)
     const env = new RoomEnvironment()
     const envMap = pmrem.fromScene(env, 0.04).texture
     scene.environment = envMap
-    scene.environmentIntensity = 0.3
+    scene.environmentIntensity = 0.08
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100)
     cameraRef.current = camera
     camera.position.set(0.9, 0.9, 0.6)
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.8)
+    // Lights
+    const key = new THREE.DirectionalLight(0xffffff, 1.5)
     key.position.set(3, 5, 4)
+    key.castShadow = true
+    key.shadow.bias = -0.0005
+    key.shadow.radius = 4
+    key.shadow.mapSize.set(2048, 2048)
+    key.shadow.camera.left = -12
+    key.shadow.camera.right = 12
+    key.shadow.camera.top = 12
+    key.shadow.camera.bottom = -12
+    key.shadow.camera.near = 0.5
+    key.shadow.camera.far = 30
     scene.add(key)
-    const rim = new THREE.DirectionalLight(0xffffff, 1.1)
+
+    const rim = new THREE.DirectionalLight(0xffffff, 1.0)
     rim.position.set(-4, 3, -2)
     scene.add(rim)
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.45))
 
     const group = new THREE.Group()
     scene.add(group)
     groupRef.current = group
 
+    // SLATE PLANE — UV tiling + vignette
+    const PLANE_SIZE = 50
+    const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE, 1, 1)
+    planeGeo.rotateX(-Math.PI / 2)
+
+    // control scale of slate here: bigger numbers = smaller-looking slate
+    texSlate.wrapS = texSlate.wrapT = THREE.RepeatWrapping
+    texSlate.repeat.set(10, 10)
+    texSlate.needsUpdate = true
+
+    const slateMat = createSlatePhysicalMaterial({
+      slateMap: texSlate,
+      uniforms: planeUniformsRef.current,
+      roughness: 0.9,
+      metalness: 0.0,
+    })
+
+    const plane = new THREE.Mesh(planeGeo, slateMat)
+    plane.receiveShadow = true
+    plane.castShadow = false
+    plane.renderOrder = -1
+    plane.position.y = -(10 * MM_TO_UNITS) * 0.5
+    scene.add(plane)
+    planeMeshRef.current = plane
+
+    // Controls
     const controls = new OrbitControls(camera, renderer.domElement)
     controlsRef.current = controls
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.target.set(0, 0, 0)
-
     controls.enableZoom = false
     controls.enablePan = false
+    controls.minPolarAngle = 0.2
+    controls.maxPolarAngle = Math.PI / 2 - 0.12
+
     const resize = () => {
       const w = el.clientWidth,
         h = el.clientHeight
@@ -824,9 +947,34 @@ export function BraceletScene() {
     ro.observe(el)
     resize()
 
+    // Init vignette from bracelet
+    const C0 = circumferenceFrom(useStore.getState().bracelet) * MM_TO_UNITS
+    const r0 = C0 / (2 * Math.PI)
+    planeUniformsRef.current.uRadius.value = r0 * 1.35
+    planeUniformsRef.current.uFeather.value = r0 * 2.4
+    plane.position.y = -(Math.max(6, 10) * MM_TO_UNITS) * 0.5
+
     let raf = 0
     const tick = () => {
       controls.update()
+
+      // --- sync plane uniforms to shader every frame (if compiled) ---
+      const p = planeMeshRef.current as THREE.Mesh | null
+      if (p) {
+        const mat = p.material as THREE.MeshPhysicalMaterial & {
+          userData?: { shader?: any; uniforms?: any }
+        }
+        const shader = mat?.userData?.shader
+        const U = planeUniformsRef.current
+        if (shader && U) {
+          const su = shader.uniforms
+          su.uGain.value = U.uGain.value
+          su.uRadius.value = U.uRadius.value
+          su.uFeather.value = U.uFeather.value
+        }
+      }
+      // ------------------------------------------
+
       renderer.render(scene, camera)
       raf = requestAnimationFrame(tick)
     }
@@ -841,8 +989,33 @@ export function BraceletScene() {
       pmrem.dispose()
       renderer.dispose()
       el.removeChild(renderer.domElement)
+      if (planeMeshRef.current) {
+        disposeObject(planeMeshRef.current)
+        planeMeshRef.current = null
+      }
     }
   }, [])
+
+  // Camera fit after changes
+  useEffect(() => {
+    if (!ready || !groupRef.current || !cameraRef.current) return
+    const g = groupRef.current
+    const cam = cameraRef.current
+    const ctrls = controlsRef.current || undefined
+    requestAnimationFrame(() => fitCameraToGroup(g, cam, ctrls, 1.25))
+  }, [bracelet, ready])
+
+  // Keep plane just under beads as sizes change
+  useEffect(() => {
+    if (!ready || !planeMeshRef.current) return
+    let maxSizeMM = 10
+    for (const id of bracelet) {
+      const b = BEADS[id]
+      if (b.kind === 'spacer') maxSizeMM = Math.max(maxSizeMM, b.sizeMM ?? 6)
+      else if (b.sizeMM) maxSizeMM = Math.max(maxSizeMM, b.sizeMM)
+    }
+    planeMeshRef.current.position.y = -(maxSizeMM * MM_TO_UNITS) * 0.5
+  }, [bracelet, ready])
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }} />
 }
