@@ -182,6 +182,8 @@ body {
 }
 .options.styles > * {
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 .options.styles svg {
   fill: var(--text);
@@ -260,6 +262,7 @@ body {
 @media (max-width: 860px) {
   .layout {
     grid-template-columns: 1fr;
+    grid-template-rows: 0.65fr 1fr;
   }
   .side {
     border-left: none;
