@@ -2,13 +2,28 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 
+import { BEADS } from '../beads'
+import { useStore } from '../store'
+
+import {
+  gemMaterial,
+  metalMat,
+  lavaMats,
+  goldMat,
+  MM_TO_UNITS,
+  preloadVeraroLogo, // <-- load in component
+  makeLogoAlphaTexture, // (used for slate overlay plane)
+  roundedCubeGeo,
+} from './materials'
+
+import type { Bead, BeadId, SpacerBead } from '../types'
+
+// ----------------- utils / dispose -----------------
 const disposeMaterial = (m?: THREE.Material | THREE.Material[]) => {
   if (!m) return
   Array.isArray(m) ? m.forEach((mat) => mat.dispose()) : m.dispose()
 }
-
 const disposeObject = (root: THREE.Object3D) => {
   root.traverse((node) => {
     if (node instanceof THREE.Mesh) {
@@ -29,13 +44,12 @@ const disposeObject = (root: THREE.Object3D) => {
   })
 }
 
-// ---------- STABLE CAMERA FIT + EASING ----------
+// ---------- camera fit ----------
 function stableRingRadiusUnits(bracelet: BeadId[]) {
   const Cmm = circumferenceFrom(bracelet)
   const C = Cmm * MM_TO_UNITS
   return C / (2 * Math.PI)
 }
-
 function maxBeadSizeMM(bracelet: BeadId[]) {
   let m = 6
   for (const id of bracelet) {
@@ -45,8 +59,6 @@ function maxBeadSizeMM(bracelet: BeadId[]) {
   }
   return m
 }
-
-/** Compute desired fit distance and bounding radius R (no side effects). */
 function computeFitDistance(
   ringRadiusUnits: number,
   maxBeadSizeMMVal: number,
@@ -58,19 +70,15 @@ function computeFitDistance(
   const beadHalf = (maxBeadSizeMMVal * MM_TO_UNITS) / 2
   const margin = (extraMarginMM * MM_TO_UNITS) / 2
   const R = ringRadiusUnits + beadHalf + margin
-
   const vFov = THREE.MathUtils.degToRad(cameraFov)
   const fitHeightDistance = R / Math.sin(vFov / 2)
   const fitWidthDistance = R / Math.sin(Math.atan(Math.tan(vFov / 2) * cameraAspect))
   const distance = Math.max(fitHeightDistance, fitWidthDistance) * padding
   return { distance, R }
 }
-
-// Smoothstep-ish easing (cubic in/out)
 function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
-
 function snapCameraToDistance(
   distance: number,
   R: number,
@@ -86,13 +94,6 @@ function snapCameraToDistance(
   controls?.update()
 }
 
-import { BEADS } from '../beads'
-import { useStore } from '../store'
-
-import type { Bead, BeadId, SpacerBead } from '../types'
-
-const MM_TO_UNITS = 0.1 // 10mm -> 1 unit
-
 function circumferenceFrom(bracelet: BeadId[]) {
   return Math.max(
     120,
@@ -104,84 +105,14 @@ function circumferenceFrom(bracelet: BeadId[]) {
   )
 }
 
-// -------------------- TEXTURES --------------------
-const loader = new THREE.TextureLoader()
-
-const texBronzite = loader.load('/textures/bronzite.jpg')
-texBronzite.wrapS = texBronzite.wrapT = THREE.RepeatWrapping
-texBronzite.colorSpace = THREE.SRGBColorSpace
-
-const bmBronzite = loader.load('/textures/bronzite-bump-map.jpg')
-bmBronzite.wrapS = bmBronzite.wrapT = THREE.RepeatWrapping
-
-const texMalachite = loader.load('/textures/malachite.jpg')
-texMalachite.wrapS = texMalachite.wrapT = THREE.RepeatWrapping
-texMalachite.colorSpace = THREE.SRGBColorSpace
-
-const texTigerEye = loader.load('/textures/tigereye.jpg')
-texTigerEye.wrapS = texTigerEye.wrapT = THREE.RepeatWrapping
-texTigerEye.colorSpace = THREE.SRGBColorSpace
-
-const texMapstone = loader.load('/textures/mapstone.jpg')
-texMapstone.wrapS = texMapstone.wrapT = THREE.RepeatWrapping
-texMapstone.colorSpace = THREE.SRGBColorSpace
-
-const texWhiteJade = loader.load('/textures/white-jade.jpg')
-texWhiteJade.wrapS = texWhiteJade.wrapT = THREE.RepeatWrapping
-texWhiteJade.colorSpace = THREE.SRGBColorSpace
-
-const texLavastone = loader.load('/textures/lavastone.jpg')
-texLavastone.wrapS = texLavastone.wrapT = THREE.RepeatWrapping
-texLavastone.colorSpace = THREE.SRGBColorSpace
-const bmLavastone = loader.load('/textures/lavastone-bump-map.jpg')
-bmLavastone.wrapS = bmLavastone.wrapT = THREE.RepeatWrapping
-const rmLavastone = loader.load('/textures/lavastone-roughness-map.jpg')
-rmLavastone.wrapS = rmLavastone.wrapT = THREE.RepeatWrapping
-
-const bmBlackMetal = loader.load('/textures/blackmetal-bump-map.jpg')
-bmBlackMetal.wrapS = bmBlackMetal.wrapT = THREE.RepeatWrapping
-
-const texAntiqueBrass = loader.load('/textures/antiquebrass.jpg')
-texAntiqueBrass.wrapS = texAntiqueBrass.wrapT = THREE.RepeatWrapping
-texAntiqueBrass.colorSpace = THREE.SRGBColorSpace
-const bmScratches = loader.load('/textures/scratches-bump-map.jpg')
-bmScratches.wrapS = bmScratches.wrapT = THREE.RepeatWrapping
-
-const texRubyZoisite = loader.load('/textures/rubyzoisite.jpg')
-texRubyZoisite.wrapS = texRubyZoisite.wrapT = THREE.RepeatWrapping
-texRubyZoisite.colorSpace = THREE.SRGBColorSpace
-
-const texQuartz = loader.load('/textures/quartz.jpg')
-texQuartz.wrapS = texQuartz.wrapT = THREE.RepeatWrapping
-texQuartz.colorSpace = THREE.SRGBColorSpace
-
-const bmSparkle = loader.load('/textures/sparkle-bump-map.jpg')
-bmSparkle.wrapS = bmSparkle.wrapT = THREE.RepeatWrapping
-
-const dmCarved = loader.load('/textures/carved-displacement-map.jpg')
-dmCarved.wrapS = dmCarved.wrapT = THREE.RepeatWrapping
-
-const bmCarved = loader.load('/textures/carved-bump-map.jpg')
-bmCarved.wrapS = bmCarved.wrapT = THREE.RepeatWrapping
-
-const texLarvikite = loader.load('/textures/larvikite.jpg')
-texLarvikite.wrapS = texLarvikite.wrapT = THREE.RepeatWrapping
-texLarvikite.colorSpace = THREE.SRGBColorSpace
-
-// NEW: Slate surface texture (image file should exist at this path)
-const texSlate = loader.load('/textures/slate-surface.jpg')
-texSlate.wrapS = texSlate.wrapT = THREE.RepeatWrapping
-texSlate.colorSpace = THREE.SRGBColorSpace
-texSlate.anisotropy = 8
-
-// -------------------- GEM BRIGHTNESS RNG --------------------
+// ---- gem brightness RNG (unchanged) ----
 const GEM_BRIGHTNESS_RANGE: Record<string, [number, number]> = {
   whitejade: [0.92, 1.08],
   malachite: [0.8, 1.2],
   larvikite: [0.8, 1.2],
   tigereye: [0.8, 1.2],
   bronzite: [0.8, 1.2],
-  rubyzoisite: [0.9, 1.1],
+  rubyinzoisite: [0.9, 1.1],
   quartz: [0.65, 1.2],
   mapstone: [0.8, 1.1],
   carved: [0.95, 1.05],
@@ -194,102 +125,7 @@ function randomIn([lo, hi]: [number, number]) {
   return lo + Math.random() * (hi - lo)
 }
 
-// -------------------- UTILS --------------------
-function makeThicknessMap(size = 512) {
-  const c = document.createElement('canvas')
-  c.width = c.height = size
-  const g = c.getContext('2d')!
-  g.fillStyle = '#ccc'
-  g.fillRect(0, 0, size, size)
-  for (let i = 0; i < 4; i++) {
-    const r = size * (0.18 + i * 0.12)
-    g.globalAlpha = 0.08 + i * 0.04
-    const grd = g.createRadialGradient(r, r, r * 0.2, r, r, r)
-    grd.addColorStop(0, '#fff')
-    grd.addColorStop(1, '#888')
-    g.fillStyle = grd
-    g.beginPath()
-    g.arc(r, r, r, 0, Math.PI * 2)
-    g.fill()
-  }
-  const t = new THREE.CanvasTexture(c)
-  t.wrapS = t.wrapT = THREE.RepeatWrapping
-  t.anisotropy = 4
-  return t
-}
-
-function sphereGeoMM(dmm: number) {
-  return new THREE.SphereGeometry((dmm * MM_TO_UNITS) / 2, 64, 64)
-}
-
-function createLogoTopMaterial(
-  baseColor: string,
-  logoColor: string,
-  metalness = 1.0,
-  roughness = 0.5,
-  bumpMap: THREE.Texture | null
-) {
-  const s = 1024
-  const cnv = document.createElement('canvas')
-  cnv.width = cnv.height = s
-  const g = cnv.getContext('2d')!
-  g.fillStyle = baseColor
-  g.fillRect(0, 0, s, s)
-  g.globalAlpha = 0.08
-  for (let y = 0; y < s; y += 2) {
-    g.fillStyle = 'rgba(255,255,255,0.05)'
-    g.fillRect(0, y, s, 1)
-  }
-  g.globalAlpha = 1.0
-
-  const tex = new THREE.CanvasTexture(cnv)
-  tex.colorSpace = THREE.SRGBColorSpace
-  tex.anisotropy = 8
-  const params: THREE.MeshStandardMaterialParameters = {
-    map: tex,
-    metalness,
-    roughness,
-    bumpScale: 0.35,
-  }
-  ;(async () => {
-    try {
-      const res = await fetch('/veraro-logo.svg')
-      const svgText = await res.text()
-      const mask = document.createElement('canvas')
-      mask.width = mask.height = s
-      const mg = mask.getContext('2d')!
-      const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }))
-      const img = new Image()
-      img.onload = () => {
-        const m = s * 0.08,
-          w = s - m * 2,
-          h = w
-        mg.clearRect(0, 0, s, s)
-        mg.save()
-        mg.translate(s / 2, s / 2)
-        mg.drawImage(img, -w / 2, -h / 2, w, h)
-        mg.restore()
-        mg.globalCompositeOperation = 'source-in'
-        mg.fillStyle = logoColor
-        mg.fillRect(0, 0, s, s)
-        mg.globalCompositeOperation = 'source-over'
-        g.drawImage(mask, 0, 0)
-        URL.revokeObjectURL(url)
-        tex.needsUpdate = true
-      }
-      img.onerror = () => {
-        console.warn('Logo SVG failed to load')
-      }
-      img.src = url
-    } catch (e) {
-      console.warn('Logo load error', e)
-    }
-  })()
-  if (bumpMap) params.bumpMap = bumpMap
-  return new THREE.MeshStandardMaterial(params)
-}
-
-// --- MeshPhysicalMaterial with UV-based map tiling + world-space vignette
+// --- Slate material w/ vignette ---
 function createSlatePhysicalMaterial(opts: {
   slateMap: THREE.Texture
   uniforms: {
@@ -301,7 +137,6 @@ function createSlatePhysicalMaterial(opts: {
   metalness?: number
 }) {
   const { slateMap, uniforms, roughness = 0.9, metalness = 0.0 } = opts
-
   const params: THREE.MeshPhysicalMaterialParameters = {
     map: slateMap,
     roughness,
@@ -310,17 +145,11 @@ function createSlatePhysicalMaterial(opts: {
     clearcoat: 0.0,
     depthWrite: true,
   }
-
   const mat = new THREE.MeshPhysicalMaterial(params)
-
-  // keep references so we can update uniforms after compile
   mat.userData.uniforms = uniforms
-
   mat.onBeforeCompile = (shader) => {
-    mat.userData.shader = shader // stash compiled shader
-
+    mat.userData.shader = shader
     Object.assign(shader.uniforms, uniforms)
-
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -336,7 +165,6 @@ function createSlatePhysicalMaterial(opts: {
         vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
         `
       )
-
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
@@ -359,16 +187,19 @@ function createSlatePhysicalMaterial(opts: {
         `
       )
   }
-
-  // absorption/reflectance tweaks (optional, keep or tune)
   mat.envMapIntensity = 0.05
   mat.specularIntensity = 0.2
   mat.ior = 1.2
   mat.roughness = Math.min(0.98, mat.roughness + 0.05)
   mat.color.multiplyScalar(0.9)
-
   return mat
 }
+
+// ------------- only slate texture here -------------
+const texSlate = new THREE.TextureLoader().load('/textures/slate-surface.jpg')
+texSlate.wrapS = texSlate.wrapT = THREE.RepeatWrapping
+texSlate.colorSpace = THREE.SRGBColorSpace
+texSlate.anisotropy = 8
 
 // -------------------- COMPONENT --------------------
 export function BraceletScene() {
@@ -377,16 +208,39 @@ export function BraceletScene() {
   const groupRef = useRef<THREE.Group | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const controlsRef = useRef<OrbitControls | null>(null)
+
   const bracelet = useStore((s) => s.bracelet)
   const [ready, setReady] = useState(false)
+
+  // ✅ preload Veraro logo INSIDE component, then rebuild cubes
+  const logoTexRef = useRef<THREE.CanvasTexture>()
+  const [logoReady, setLogoReady] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    preloadVeraroLogo().then((t) => {
+      if (!mounted) return
+      logoTexRef.current = t
+      setLogoReady(true)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   const texCache = useRef(new Map<string, THREE.Texture | null | undefined>()).current
 
   const planeMeshRef = useRef<THREE.Mesh | null>(null)
+  const logoMeshRef = useRef<THREE.Mesh | null>(null)
   const planeUniformsRef = useRef({
-    uGain: { value: 0.8 },
+    uGain: { value: 1.5 },
     uRadius: { value: 2.0 },
     uFeather: { value: 4.0 },
   })
+
+  // slate overlay logo controls
+  const LOGO_SCALE = 0.07
+  const LOGO_OPACITY = 0.06
 
   // stable per-slot props (spin + brightness)
   const prevBraceletRef = useRef<BeadId[]>([])
@@ -413,8 +267,6 @@ export function BraceletScene() {
 
     const target = (ctrls?.target ?? new THREE.Vector3(0, 0, 0)).clone()
     const from = cam.position.distanceTo(target)
-
-    // If tiny delta or zero duration, just snap
     if (durationMs <= 0 || Math.abs(toDistance - from) < 1e-4) {
       snapCameraToDistance(toDistance, R, cam, ctrls ?? undefined)
       fitAnimRef.current = null
@@ -438,22 +290,17 @@ export function BraceletScene() {
     (durationMs = 450) => {
       const cam = cameraRef.current
       if (!cam) return
-      const ctrls = controlsRef.current || undefined
       const ringR = stableRingRadiusUnits(useStore.getState().bracelet)
       const maxMM = maxBeadSizeMM(useStore.getState().bracelet)
       const key = `${ringR.toFixed(4)}|${maxMM}|${cam.aspect.toFixed(4)}|${cam.fov}`
-
       if (lastFitKeyRef.current !== key) {
         const { distance, R } = computeFitDistance(ringR, maxMM, cam.aspect, cam.fov, 1.25, 2)
-
-        // First ever fit: snap, then mark done
         if (!firstFitDoneRef.current) {
           startFitAnimation(distance, R, 0)
           firstFitDoneRef.current = true
         } else {
           startFitAnimation(distance, R, durationMs)
         }
-
         lastFitKeyRef.current = key
       }
     },
@@ -489,10 +336,11 @@ export function BraceletScene() {
   useEffect(() => {
     if (ready) {
       updatePlaneFalloff()
-      doStableFit(450) // ease on bracelet changes
+      doStableFit(450)
     }
   }, [bracelet, ready, updatePlaneFalloff, doStableFit])
 
+  // ---------- build bracelet meshes ----------
   useEffect(() => {
     if (!groupRef.current || !sceneRef.current || !ready) return
     const group = groupRef.current
@@ -505,12 +353,6 @@ export function BraceletScene() {
 
     const circumference = circumferenceFrom(bracelet)
     const radius = (circumference / (2 * Math.PI)) * MM_TO_UNITS
-
-    const goldMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color('#d4af37'),
-      metalness: 1.0,
-      roughness: 0.18,
-    })
 
     const placeSpacer = (bead: SpacerBead, ang: number) => {
       const t = bead.thicknessMM * MM_TO_UNITS
@@ -539,234 +381,6 @@ export function BraceletScene() {
       return mesh
     }
 
-    const gemMaterial = (id: string, bright = 1) => {
-      const thicknessMap =
-        texCache.get('wj-thick') || texCache.set('wj-thick', makeThicknessMap()).get('wj-thick')
-
-      if (id.startsWith('whitejade')) {
-        const sizeMM = BEADS['whitejade-10'].sizeMM
-        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.75
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texWhiteJade,
-          roughness: 0.18,
-          metalness: 0.0,
-          transmission: 0.72,
-          ior: 1.78,
-          thickness: thicknessUnits,
-          thicknessMap,
-          attenuationColor: '#f7f3e4ff',
-          attenuationDistance: 0.16,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.12,
-          envMapIntensity: 2.2,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('malachite')) {
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texMalachite,
-          metalness: 0,
-          roughness: 0.14,
-          clearcoat: 0.12,
-          clearcoatRoughness: 0.3,
-          ior: 1.7,
-          envMapIntensity: 0,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('larvikite')) {
-        const sizeMM = BEADS['larvikite-10'].sizeMM
-        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texLarvikite,
-          metalness: 0,
-          roughness: 0,
-          ior: 1.8,
-          transmission: 0.09,
-          thickness: thicknessUnits * 2.0,
-          thicknessMap,
-          attenuationColor: '#a2c4e0ff',
-          attenuationDistance: 0.16,
-          clearcoat: 0.6,
-          clearcoatRoughness: 1,
-          envMapIntensity: 0,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('tigereye')) {
-        const sizeMM = BEADS['tigereye-10'].sizeMM
-        const thicknessUnits = sizeMM * MM_TO_UNITS * 0.5
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texTigerEye,
-          metalness: 0,
-          roughness: 0.14,
-          ior: 1.7,
-          transmission: 0.72,
-          thickness: thicknessUnits * 2.0,
-          thicknessMap,
-          attenuationColor: '#f7f4eeff',
-          attenuationDistance: 0.16,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.2,
-          envMapIntensity: 0,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('bronzite')) {
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texBronzite,
-          metalness: 0.0,
-          roughness: 0.45,
-          clearcoat: 0.2,
-          clearcoatRoughness: 0.65,
-          ior: 0.72,
-          bumpMap: bmBronzite,
-          bumpScale: 0.3,
-          envMapIntensity: 0.7,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('rubyzoisite')) {
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texRubyZoisite,
-          metalness: 0.0,
-          roughness: 0.25,
-          clearcoat: 0.6,
-          clearcoatRoughness: 0.2,
-          ior: 0.8,
-          bumpMap: bmSparkle,
-          bumpScale: -1.5,
-          envMapIntensity: 1,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('quartz')) {
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texQuartz,
-          metalness: 0.0,
-          roughness: 0.22,
-          clearcoat: 0.6,
-          clearcoatRoughness: 0.17,
-          ior: 0.8,
-          bumpMap: bmSparkle,
-          bumpScale: -1,
-          envMapIntensity: 1,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('mapstone')) {
-        const m = new THREE.MeshPhysicalMaterial({
-          map: texMapstone,
-          metalness: 0.0,
-          roughness: 0.8,
-          clearcoat: 0.1,
-          clearcoatRoughness: 0.65,
-          ior: 0.65,
-          envMapIntensity: 1,
-        })
-        m.color.setScalar(bright)
-        return m
-      }
-
-      if (id.startsWith('onyx')) {
-        return new THREE.MeshPhysicalMaterial({
-          color: 0x000000,
-          metalness: 0.5,
-          roughness: 0.4,
-          clearcoat: 0.4,
-          clearcoatRoughness: 0.6,
-          ior: 1.3,
-        })
-      }
-
-      if (id.startsWith('carved')) {
-        return new THREE.MeshPhysicalMaterial({
-          color: 0x181818,
-          displacementMap: dmCarved,
-          displacementScale: 0.12,
-          displacementBias: -0.06,
-          bumpMap: bmCarved,
-          bumpScale: 2,
-          metalness: 0.1,
-          roughness: 0.4,
-          clearcoat: 0.3,
-          clearcoatRoughness: 0.4,
-          ior: 1.4,
-        })
-      }
-    }
-
-    const roundedCubeGeo = (size: number, radius: number) =>
-      new RoundedBoxGeometry(size, size, size, 4, size * radius)
-
-    const lavaMats = new THREE.MeshPhysicalMaterial({
-      map: texLavastone,
-      bumpMap: bmLavastone,
-      bumpScale: 2,
-      roughnessMap: rmLavastone,
-      roughness: 0.86,
-      metalness: 0.54,
-    })
-
-    const metalMat = (bead: Bead) => {
-      const isStainless = bead.metalKind === 'stainless'
-      const base =
-        bead.metalKind === 'brass'
-          ? '#393228'
-          : bead.metalKind === 'black'
-            ? '#222222'
-            : isStainless
-              ? '#d9dbde'
-              : '#8a8d90'
-      const rough =
-        bead.metalKind === 'black'
-          ? 0.7
-          : bead.metalKind === 'brass'
-            ? 0.6
-            : isStainless
-              ? 0.12
-              : 0.45
-      const params: THREE.MeshPhysicalMaterialParameters = {
-        color: new THREE.Color(base),
-        metalness: 1.0,
-        roughness: rough,
-      }
-      if (bead.metalKind === 'black') {
-        params.bumpMap = bmBlackMetal
-        params.bumpScale = 0.35
-      } else if (bead.metalKind === 'brass') {
-        params.bumpMap = bmScratches
-        params.bumpScale = 0.35
-      }
-      const side = new THREE.MeshPhysicalMaterial(params)
-      if (isStainless) side.envMapIntensity = 1.4
-
-      const top = createLogoTopMaterial(
-        base,
-        bead.logoColor || '#d4af37',
-        bead.metalKind === 'black' ? 0.88 : 1.0,
-        rough,
-        bead.metalKind === 'black' ? bmBlackMetal : bead.metalKind === 'brass' ? bmScratches : null
-      )
-      if (isStainless) top.envMapIntensity = 1.4
-      return { side, top }
-    }
-
-    // Build bracelet meshes
     let i = 0
     let theta = 0
     while (i < bracelet.length) {
@@ -785,7 +399,7 @@ export function BraceletScene() {
 
         const slotProps = slotPropsRef.current.get(i) || { spin: 0, bright: 1 }
         const mesh = new THREE.Mesh(
-          sphereGeoMM(bead.sizeMM!),
+          new THREE.SphereGeometry((bead.sizeMM! * MM_TO_UNITS) / 2, 64, 64),
           gemMaterial(bead.id, slotProps.bright)
         )
         mesh.castShadow = true
@@ -802,7 +416,7 @@ export function BraceletScene() {
         continue
       }
 
-      // contiguous run of flat beads
+      // run of flat beads
       let j = i
       let totalMM = 0
       const run: Array<{ bead: Bead; id: BeadId; mm: number }> = []
@@ -845,7 +459,8 @@ export function BraceletScene() {
             mesh = new THREE.Mesh(roundedCubeGeo(size, 0.07), lavaMats)
             mesh.castShadow = true
           } else {
-            const mats = metalMat(only.bead)
+            // ✅ pass logo texture (may be undefined on first build; we rebuild when ready)
+            const mats = metalMat(only.bead, logoTexRef.current)
             const matArr: THREE.Material[] = [
               mats.side,
               mats.side,
@@ -920,7 +535,8 @@ export function BraceletScene() {
             mesh = new THREE.Mesh(roundedCubeGeo(size, 0.07), lavaMats)
             mesh.castShadow = true
           } else {
-            const mats = metalMat(r.bead)
+            // ✅ pass logo texture
+            const mats = metalMat(r.bead, logoTexRef.current)
             const matArr: THREE.Material[] = [
               mats.side,
               mats.side,
@@ -944,10 +560,11 @@ export function BraceletScene() {
       i = j
     }
 
-    // keep camera fit (animated) for current size/aspect:
     doStableFit(450)
-  }, [bracelet, ready, texCache, doStableFit])
+    // 👇 rebuild when logo mask becomes available
+  }, [bracelet, ready, doStableFit, logoReady])
 
+  // ---------------- scene setup ----------------
   useEffect(() => {
     const el = ref.current!
     const scene = new THREE.Scene()
@@ -956,7 +573,7 @@ export function BraceletScene() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.5
+    renderer.toneMappingExposure = 1.85
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.shadowMap.enabled = true
@@ -967,7 +584,7 @@ export function BraceletScene() {
     const env = new RoomEnvironment()
     const envMap = pmrem.fromScene(env, 0.04).texture
     scene.environment = envMap
-    scene.environmentIntensity = 0.08
+    scene.environmentIntensity = 0.09
 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100)
     cameraRef.current = camera
@@ -991,18 +608,16 @@ export function BraceletScene() {
     const rim = new THREE.DirectionalLight(0xffffff, 1.0)
     rim.position.set(-4, 3, -2)
     scene.add(rim)
-
     scene.add(new THREE.AmbientLight(0xffffff, 0.45))
 
     const group = new THREE.Group()
     scene.add(group)
     groupRef.current = group
 
-    // SLATE PLANE — UV tiling + vignette
+    // SLATE PLANE
     const PLANE_SIZE = 50
     const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE, 1, 1)
     planeGeo.rotateX(-Math.PI / 2)
-
     texSlate.wrapS = texSlate.wrapT = THREE.RepeatWrapping
     texSlate.repeat.set(10, 10)
     texSlate.needsUpdate = true
@@ -1022,6 +637,39 @@ export function BraceletScene() {
     scene.add(plane)
     planeMeshRef.current = plane
 
+    // Centered subdued Veraro logo on slate
+    ;(async () => {
+      try {
+        const logoSize = PLANE_SIZE * LOGO_SCALE
+        const logoGeo = new THREE.PlaneGeometry(logoSize, logoSize, 1, 1)
+        logoGeo.rotateX(-Math.PI / 2)
+        logoGeo.rotateY(1)
+
+        const logoMat = new THREE.MeshBasicMaterial({
+          color: '#ffffff',
+          transparent: true,
+          opacity: LOGO_OPACITY,
+          depthWrite: false,
+          depthTest: true,
+        })
+
+        const overlayTex =
+          (texCache.get('veraroLogoAlpha') as THREE.Texture | undefined) ||
+          (await makeLogoAlphaTexture(1024, 0.06))
+        texCache.set('veraroLogoAlpha', overlayTex)
+        logoMat.map = overlayTex
+        logoMat.needsUpdate = true
+
+        const logo = new THREE.Mesh(logoGeo, logoMat)
+        logo.position.set(0, plane.position.y + 0.0005, 0) // avoid z-fighting
+        logo.renderOrder = -0.5
+        scene.add(logo)
+        logoMeshRef.current = logo
+      } catch (e) {
+        console.warn('Logo overlay failed:', e)
+      }
+    })()
+
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement)
     controlsRef.current = controls
@@ -1034,12 +682,11 @@ export function BraceletScene() {
     controls.maxPolarAngle = Math.PI / 2 - 0.12
 
     const resize = () => {
-      const w = el.clientWidth,
-        h = el.clientHeight
+      const w = el.clientWidth
+      const h = el.clientHeight
       renderer.setSize(w, h, false)
       camera.aspect = w / h
       camera.updateProjectionMatrix()
-      // animate a bit on aspect changes
       doStableFit(300)
     }
     const ro = new ResizeObserver(resize)
@@ -1052,11 +699,10 @@ export function BraceletScene() {
     planeUniformsRef.current.uRadius.value = r0 * 1.35
     planeUniformsRef.current.uFeather.value = r0 * 2.4
     plane.position.y = -(Math.max(6, 10) * MM_TO_UNITS) * 0.5
-    doStableFit(0) // first fit: snap
+    doStableFit(0)
 
     let raf = 0
     const tick = () => {
-      // --- run camera fit animation first, then let controls damp ---
       const cam = cameraRef.current
       const ctrls = controlsRef.current
       const anim = fitAnimRef.current
@@ -1071,7 +717,6 @@ export function BraceletScene() {
         cam.updateProjectionMatrix()
         if (t >= 1) anim.active = false
       }
-
       ctrls?.update()
       renderer.render(scene, camera)
       raf = requestAnimationFrame(tick)
@@ -1087,14 +732,18 @@ export function BraceletScene() {
       pmrem.dispose()
       renderer.dispose()
       el.removeChild(renderer.domElement)
+      if (logoMeshRef.current) {
+        disposeObject(logoMeshRef.current)
+        logoMeshRef.current = null
+      }
       if (planeMeshRef.current) {
         disposeObject(planeMeshRef.current)
         planeMeshRef.current = null
       }
     }
-  }, [doStableFit])
+  }, [doStableFit, texCache])
 
-  // Keep plane just under beads as sizes change
+  // Keep plane (and slate logo) just under beads
   useEffect(() => {
     if (!ready || !planeMeshRef.current) return
     let maxSizeMM = 10
@@ -1104,6 +753,9 @@ export function BraceletScene() {
       else if (b.sizeMM) maxSizeMM = Math.max(maxSizeMM, b.sizeMM)
     }
     planeMeshRef.current.position.y = -(maxSizeMM * MM_TO_UNITS) * 0.5
+    if (logoMeshRef.current) {
+      logoMeshRef.current.position.y = planeMeshRef.current.position.y + 0.0005
+    }
   }, [bracelet, ready])
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }} />

@@ -5,7 +5,7 @@ export const GEM_TYPES = [
   'whitejade',
   'mapstone',
   'tigereye',
-  'rubyzoisite',
+  'rubyinzoisite',
   'larvikite',
   'quartz',
   'carved',

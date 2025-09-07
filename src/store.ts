@@ -15,7 +15,7 @@ export type State = {
 
 const initial = configurator({
   primary: 'onyx',
-  secondary: 'rubyzoisite',
+  secondary: 'rubyinzoisite',
   mainSizeMM: 10,
   targetCircumferenceMM: 180,
   spacers: true,

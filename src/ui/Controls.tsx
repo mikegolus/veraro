@@ -4,6 +4,7 @@ import { BEADS } from '../beads'
 import { configurator } from '../lib/configurator'
 import { getCircumferenceMM, labelOfGemstoneType } from '../lib/helpers'
 import { useStore } from '../store'
+import { BeadPreview } from '../three/BeadPreview'
 import { GEM_TYPES, type BeadId, type GemType } from '../types'
 
 /* ---------------------------------- utils --------------------------------- */
@@ -116,33 +117,48 @@ type Style = (typeof STYLES)[number]
 
 /* ------------------------------ focal options ----------------------------- */
 
-type Focal = { label: string; beads: BeadId[] }
+type Focal = { id: BeadId; label: string; beads: BeadId[] }
 
 const SOLITAIRE_OPTIONS: Focal[] = [
-  { label: 'Lava Stone', beads: ['spacer-10x2', 'lava-cube-10', 'spacer-10x2'] },
-  { label: 'Black Metal Signature', beads: ['spacer-10x2', 'cube-black-logo-10', 'spacer-10x2'] },
   {
+    id: 'lava-cube-10',
+    label: 'Lava Stone',
+    beads: ['spacer-10x2', 'lava-cube-10', 'spacer-10x2'],
+  },
+  {
+    id: 'cube-black-logo-10',
+    label: 'Black Metal Signature',
+    beads: ['spacer-10x2', 'cube-black-logo-10', 'spacer-10x2'],
+  },
+  {
+    id: 'cube-stainless-logo-10',
     label: 'Stainless Steel Signature',
     beads: ['spacer-10x2', 'cube-stainless-logo-10', 'spacer-10x2'],
   },
   {
+    id: 'cube-dullsteel-logo-10',
     label: 'Matte Steel Signature',
     beads: ['spacer-10x2', 'cube-dullsteel-logo-10', 'spacer-10x2'],
   },
-  { label: 'Brass Signature', beads: ['spacer-10x2', 'cube-brass-logo-10', 'spacer-10x2'] },
+  {
+    id: 'cube-brass-logo-10',
+    label: 'Brass Signature',
+    beads: ['spacer-10x2', 'cube-brass-logo-10', 'spacer-10x2'],
+  },
 ]
 
 const TRIAD_OPTIONS: Focal[] = [
-  { label: 'Lava Stone', beads: ['spacer-8x2', 'lava-cube-8', 'spacer-8x2'] },
-  { label: 'Carved Obsidian', beads: ['spacer-8x2', 'carved-10', 'spacer-8x2'] },
-  { label: 'Tiger Eye', beads: ['spacer-8x2', 'tigereye-10', 'spacer-8x2'] },
-  { label: 'Bronzite', beads: ['spacer-8x2', 'bronzite-10', 'spacer-8x2'] },
-  { label: 'Malachite', beads: ['spacer-8x2', 'malachite-10', 'spacer-8x2'] },
-  { label: 'Map Stone', beads: ['spacer-8x2', 'mapstone-10', 'spacer-8x2'] },
+  { id: 'lava-cube-8', label: 'Lava Stone', beads: ['spacer-8x2', 'lava-cube-8', 'spacer-8x2'] },
+  { id: 'carved-10', label: 'Carved Obsidian', beads: ['spacer-8x2', 'carved-10', 'spacer-8x2'] },
+  { id: 'tigereye-10', label: 'Tiger Eye', beads: ['spacer-8x2', 'tigereye-10', 'spacer-8x2'] },
+  { id: 'bronzite-10', label: 'Bronzite', beads: ['spacer-8x2', 'bronzite-10', 'spacer-8x2'] },
+  { id: 'malachite-10', label: 'Malachite', beads: ['spacer-8x2', 'malachite-10', 'spacer-8x2'] },
+  { id: 'mapstone-10', label: 'Map Stone', beads: ['spacer-8x2', 'mapstone-10', 'spacer-8x2'] },
 ]
 
 const ARRAY_OPTIONS: Focal[] = [
   {
+    id: 'bronzite-10',
     label: 'Bronzite',
     beads: [
       'spacer-8x2',
@@ -155,10 +171,12 @@ const ARRAY_OPTIONS: Focal[] = [
     ],
   },
   {
+    id: 'onyx-10',
     label: 'Onyx',
     beads: ['spacer-8x2', 'onyx-10', 'onyx-10', 'onyx-10', 'onyx-10', 'onyx-10', 'spacer-8x2'],
   },
   {
+    id: 'larvikite-10',
     label: 'Larvikite',
     beads: [
       'spacer-8x2',
@@ -171,6 +189,7 @@ const ARRAY_OPTIONS: Focal[] = [
     ],
   },
   {
+    id: 'malachite-10',
     label: 'Malachite',
     beads: [
       'spacer-8x2',
@@ -183,6 +202,7 @@ const ARRAY_OPTIONS: Focal[] = [
     ],
   },
   {
+    id: 'mapstone-10',
     label: 'Map Stone',
     beads: [
       'spacer-8x2',
@@ -195,6 +215,7 @@ const ARRAY_OPTIONS: Focal[] = [
     ],
   },
   {
+    id: 'quartz-10',
     label: 'Quartz',
     beads: [
       'spacer-8x2',
@@ -207,18 +228,20 @@ const ARRAY_OPTIONS: Focal[] = [
     ],
   },
   {
+    id: 'rubyinzoisite-10',
     label: 'Ruby in Zoisite',
     beads: [
       'spacer-8x2',
-      'rubyzoisite-10',
-      'rubyzoisite-10',
-      'rubyzoisite-10',
-      'rubyzoisite-10',
-      'rubyzoisite-10',
+      'rubyinzoisite-10',
+      'rubyinzoisite-10',
+      'rubyinzoisite-10',
+      'rubyinzoisite-10',
+      'rubyinzoisite-10',
       'spacer-8x2',
     ],
   },
   {
+    id: 'tigereye-10',
     label: 'Tiger Eye',
     beads: [
       'spacer-8x2',
@@ -231,6 +254,7 @@ const ARRAY_OPTIONS: Focal[] = [
     ],
   },
   {
+    id: 'whitejade-10',
     label: 'White Jade',
     beads: [
       'spacer-8x2',
@@ -275,6 +299,7 @@ type BaseProps<T> = {
   disabled?: boolean
   className?: string
   renderOption?: (opt: T | null, selected: boolean) => React.ReactNode
+  getBeadId?: (opt: T | null) => BeadId | ''
 }
 
 type NullableProps<T> = BaseProps<T> & {
@@ -308,10 +333,12 @@ export function SelectItem<T>(props: SelectItemProps<T>) {
     disabled = false,
     className = '',
     renderOption,
+    getBeadId,
+    value,
+    nullable,
   } = props
 
-  const isNullable = props.nullable === true
-  const value = props.value as T | null
+  const isNullable = nullable === true
 
   const [open, setOpen] = useState(false)
   const btnRef = useRef<HTMLButtonElement | null>(null)
@@ -342,7 +369,10 @@ export function SelectItem<T>(props: SelectItemProps<T>) {
   }, [open])
 
   // Only inject a null option when nullable
-  const listOptions: (T | null)[] = isNullable ? [null, ...options] : options.slice()
+  const listOptions: (T | null)[] = useMemo(
+    () => (isNullable ? [null, ...options] : options.slice()),
+    [isNullable, options]
+  )
 
   const defaultKey = (opt: T | null, index: number): React.Key => {
     if (opt === null) return 'null'
@@ -365,34 +395,106 @@ export function SelectItem<T>(props: SelectItemProps<T>) {
         : placeholder
       : labelFor(value)
 
-  const change = (opt: T | null) => {
-    if (isNullable) {
-      ;(props as NullableProps<T>).onChange(opt)
-    } else {
-      ;(props as NonNullableProps<T>).onChange(opt as T) // null never appears in this branch
-    }
-  }
+  const onChangeNullable = isNullable ? (props as NullableProps<T>).onChange : undefined
+  const onChangeNonNull = !isNullable ? (props as NonNullableProps<T>).onChange : undefined
+
+  const change = useCallback(
+    (opt: T | null) => {
+      if (isNullable) {
+        onChangeNullable?.(opt)
+      } else {
+        onChangeNonNull?.(opt as T)
+      }
+    },
+    [isNullable, onChangeNullable, onChangeNonNull]
+  )
+
+  const getCurrentIndex = useCallback(() => {
+    if (listOptions.length === 0) return -1
+    const idx = listOptions.findIndex((opt) => equals(value as T | null, opt as T | null))
+    return idx >= 0 ? idx : 0
+  }, [listOptions, equals, value])
+
+  const cycle = useCallback(
+    (delta: number) => {
+      if (disabled || listOptions.length === 0) return
+      const cur = getCurrentIndex()
+      if (cur < 0) return
+      const len = listOptions.length
+      const next = (((cur + delta) % len) + len) % len // safe modulo
+      change(listOptions[next])
+      // keep menu state as-is; return focus to main trigger for accessibility
+      btnRef.current?.focus()
+    },
+    [disabled, listOptions, getCurrentIndex, change]
+  )
+
+  const canCycle = !disabled && listOptions.length > 0
+
+  const selectionBeadId = getBeadId ? getBeadId(value) : ''
 
   return (
     <div className={`select-item ${open ? 'open' : ''} ${className}`}>
-      <button
-        ref={btnRef}
-        type="button"
-        className="select-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={`${id}-listbox`}
-        onClick={handleButtonClick}
-        disabled={disabled}
-      >
-        <div className="text">
-          <div className="select-item__label">{label}</div>
-          <div className="select-item__name">{triggerText}</div>
+      <div className="select-main">
+        <div className="selection">
+          {selectionBeadId ? <BeadPreview beadId={selectionBeadId} size={96} /> : null}
+          <div className="text">
+            <div className="select-item__label">{label}</div>
+            <div className="select-item__name">{triggerText}</div>
+          </div>
         </div>
-        <svg aria-hidden viewBox="0 0 20 20" width="16" height="16" className="chev">
-          <path d="M5 7l5 6 5-6" fill="none" stroke="currentColor" strokeWidth="2" />
-        </svg>
-      </button>
+        <div className="select-item-buttons">
+          <button
+            className="select-item-button"
+            type="button"
+            aria-label="Previous option"
+            title="Previous"
+            onClick={() => cycle(-1)}
+            disabled={!canCycle}
+          >
+            <svg aria-hidden viewBox="0 0 20 20" width="16" height="16">
+              <path d="M13 5l-6 5 6 5" fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
+          </button>
+
+          <button
+            className="select-item-button"
+            ref={btnRef}
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-controls={`${id}-listbox`}
+            onClick={handleButtonClick}
+            disabled={disabled}
+            title="Open menu"
+          >
+            <svg aria-hidden viewBox="0 0 20 20" width="16" height="16">
+              <rect x="2" y="2" width="4" height="4" fill="currentColor" />
+              <rect x="8" y="2" width="4" height="4" fill="currentColor" />
+              <rect x="14" y="2" width="4" height="4" fill="currentColor" />
+              <rect x="2" y="8" width="4" height="4" fill="currentColor" />
+              <rect x="8" y="8" width="4" height="4" fill="currentColor" />
+              <rect x="14" y="8" width="4" height="4" fill="currentColor" />
+              <rect x="2" y="14" width="4" height="4" fill="currentColor" />
+              <rect x="8" y="14" width="4" height="4" fill="currentColor" />
+              <rect x="14" y="14" width="4" height="4" fill="currentColor" />
+            </svg>
+          </button>
+
+          <button
+            className="select-item-button"
+            type="button"
+            aria-label="Next option"
+            title="Next"
+            onClick={() => cycle(1)}
+            disabled={!canCycle}
+          >
+            <svg aria-hidden viewBox="0 0 20 20" width="16" height="16">
+              <path d="M7 5l6 5-6 5" fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       {open && (
         <div
@@ -403,7 +505,8 @@ export function SelectItem<T>(props: SelectItemProps<T>) {
           aria-labelledby={`${id}-label`}
         >
           {listOptions.map((opt, i) => {
-            const selected = equals(value, opt)
+            const beadId = getBeadId ? getBeadId(opt) : ''
+            const selected = equals(value as T | null, opt as T | null)
             return (
               <button
                 type="button"
@@ -415,8 +518,9 @@ export function SelectItem<T>(props: SelectItemProps<T>) {
                   setOpen(false)
                   btnRef.current?.focus()
                 }}
-                className={`btn small${selected ? ' primary' : ''}`}
+                className={`list-option small${selected ? ' selected' : ''}`}
               >
+                <BeadPreview beadId={beadId} size={96} />
                 {renderOption ? renderOption(opt, selected) : labelFor(opt)}
               </button>
             )
@@ -510,6 +614,7 @@ export const Controls = () => {
               onChange={setPrimary}
               options={GEM_OPTIONS}
               getLabel={labelOfGemstoneType}
+              getBeadId={(opt) => (opt ? `${opt}-10` : '')}
             />
 
             {style.id !== 'array' ? (
@@ -520,8 +625,9 @@ export const Controls = () => {
                 options={GEM_OPTIONS}
                 getLabel={(opt) => (opt ? labelOfGemstoneType(opt) : undefined)}
                 nullable
-                emptyLabel="---"
+                emptyLabel="None"
                 emptyOptionLabel="None"
+                getBeadId={(opt) => (opt ? `${opt}-10` : '')}
               />
             ) : null}
 
@@ -532,6 +638,7 @@ export const Controls = () => {
                 onChange={setSolitaireFocal}
                 options={SOLITAIRE_OPTIONS}
                 getLabel={(opt) => opt.label}
+                getBeadId={(opt) => (opt ? opt.id : '')}
               />
             ) : null}
 
@@ -542,6 +649,7 @@ export const Controls = () => {
                 onChange={setTriadFocal}
                 options={TRIAD_OPTIONS}
                 getLabel={(opt) => opt.label}
+                getBeadId={(opt) => (opt ? opt.id : '')}
               />
             ) : null}
 
@@ -552,6 +660,7 @@ export const Controls = () => {
                 onChange={setArrayFocal}
                 options={ARRAY_OPTIONS}
                 getLabel={(opt) => opt.label}
+                getBeadId={(opt) => (opt ? opt.id : '')}
               />
             ) : null}
 

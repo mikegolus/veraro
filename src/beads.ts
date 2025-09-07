@@ -12,7 +12,7 @@ const gems: GemMeta[] = [
   { name: 'whitejade', color: '#ebebeb', label: 'White Jade' },
   { name: 'mapstone', color: '#bebebe', label: 'Map Stone' },
   { name: 'tigereye', color: 'rgba(112, 67, 34, 1)', label: 'Tiger Eye' },
-  { name: 'rubyzoisite', color: 'rgba(60, 117, 69, 1)', label: 'Ruby in Zoisite' },
+  { name: 'rubyinzoisite', color: 'rgba(60, 117, 69, 1)', label: 'Ruby in Zoisite' },
   { name: 'larvikite', color: 'rgba(88, 88, 88, 1)', label: 'Larvikite' },
   { name: 'quartz', color: 'rgba(100, 98, 95, 1)', label: 'Quartz' },
   { name: 'carved', color: 'rgba(43, 43, 43, 1)', label: 'Carved' },
