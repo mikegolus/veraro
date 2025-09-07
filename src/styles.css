@@ -291,6 +291,7 @@ body {
     top: 56px;
     z-index: 1;
     border-bottom: 1px solid var(--border);
+    aspect-ratio: 3/2;
   }
 }
 
