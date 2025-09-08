@@ -40,3 +40,15 @@ export function labelOfGemstoneType(type: GemType): string {
   const bead = Object.values(BEADS).find((bead) => bead.kind === 'gem' && bead.id.startsWith(type))
   return bead ? bead.label : type
 }
+
+export function totalPriceUSD(bracelet: BeadId[]) {
+  const beads = bracelet.reduce((sum, id) => {
+    const bead = BEADS[id]
+    const beadPrice = bead.priceUSD
+    return sum + beadPrice
+  }, 0)
+  const cord = 0.5
+  const labor = 10
+  const final = beads + cord + labor
+  return Math.round(final)
+}

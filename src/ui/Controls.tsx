@@ -1,25 +1,10 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { BEADS } from '../beads'
 import { configurator } from '../lib/configurator'
-import { getCircumferenceMM, labelOfGemstoneType } from '../lib/helpers'
+import { getCircumferenceMM, labelOfGemstoneType, totalPriceUSD } from '../lib/helpers'
 import { useStore } from '../store'
 import { BeadPreview } from '../three/BeadPreview'
 import { GEM_TYPES, type BeadId, type GemType } from '../types'
-
-/* ---------------------------------- utils --------------------------------- */
-
-function totalPriceUSD(bracelet: BeadId[]) {
-  const beads = bracelet.reduce((sum, id) => {
-    const bead = BEADS[id]
-    const beadPrice = bead.priceUSD
-    return sum + beadPrice
-  }, 0)
-  const cord = 0.5
-  const labor = 10
-  const final = beads + cord + labor
-  return Math.round(final)
-}
 
 // Keep GemType from widening to string when filtering
 const notCarved = (g: GemType): g is Exclude<GemType, 'carved'> => g !== 'carved'
@@ -590,7 +575,6 @@ export const Controls = () => {
       <div className="main">
         <div className="grid">
           <div className="option-item">
-            <label>Style</label>
             <div className="options styles">
               {STYLES.map((opt) => (
                 <button
@@ -603,33 +587,6 @@ export const Controls = () => {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="option-item">
-            <label>Elements</label>
-
-            <SelectItem
-              label="Foundation"
-              value={primary}
-              onChange={setPrimary}
-              options={GEM_OPTIONS}
-              getLabel={labelOfGemstoneType}
-              getBeadId={(opt) => (opt ? `${opt}-10` : '')}
-            />
-
-            {style.id !== 'array' ? (
-              <SelectItem
-                label="Alternating"
-                value={secondary}
-                onChange={setSecondary}
-                options={GEM_OPTIONS}
-                getLabel={(opt) => (opt ? labelOfGemstoneType(opt) : undefined)}
-                nullable
-                emptyLabel="None"
-                emptyOptionLabel="None"
-                getBeadId={(opt) => (opt ? `${opt}-10` : '')}
-              />
-            ) : null}
 
             {style.id === 'solitaire' ? (
               <SelectItem
@@ -661,6 +618,29 @@ export const Controls = () => {
                 options={ARRAY_OPTIONS}
                 getLabel={(opt) => opt.label}
                 getBeadId={(opt) => (opt ? opt.id : '')}
+              />
+            ) : null}
+
+            <SelectItem
+              label="Foundation"
+              value={primary}
+              onChange={setPrimary}
+              options={GEM_OPTIONS}
+              getLabel={labelOfGemstoneType}
+              getBeadId={(opt) => (opt ? `${opt}-10` : '')}
+            />
+
+            {style.id !== 'array' ? (
+              <SelectItem
+                label="Alternating"
+                value={secondary}
+                onChange={setSecondary}
+                options={GEM_OPTIONS}
+                getLabel={(opt) => (opt ? labelOfGemstoneType(opt) : undefined)}
+                nullable
+                emptyLabel="None"
+                emptyOptionLabel="None"
+                getBeadId={(opt) => (opt ? `${opt}-10` : '')}
               />
             ) : null}
 

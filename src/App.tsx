@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 
-import { getCircumferenceMM } from './lib/helpers'
+import { getCircumferenceMM, totalPriceUSD } from './lib/helpers'
 import { useStore } from './store'
 import { BraceletScene } from './three/BraceletScene'
 import { Controls } from './ui/Controls'
@@ -43,28 +43,10 @@ export default function App() {
           <aside className="side">
             <Controls />
           </aside>
+          <footer>
+            <button className="btn primary full">Buy Now - ${totalPriceUSD(bracelet)}</button>
+          </footer>
         </div>
-
-        {mobileOpen && (
-          <div className="mobile-overlay" role="dialog" aria-modal="true">
-            <div className="mobile-panel">
-              <div className="mobile-panel-header">
-                <h2>Controls</h2>
-                <button
-                  className="menu-btn"
-                  onClick={() => setMobileOpen(false)}
-                  aria-label="Close"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="mobile-panel-body">
-                <Controls />
-              </div>
-            </div>
-            <div className="mobile-scrim" onClick={() => setMobileOpen(false)} aria-hidden />
-          </div>
-        )}
       </div>
     </>
   )
